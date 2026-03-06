@@ -1,0 +1,68 @@
+/*
+ * BARK — Aesthetic Direction (Frontend Design: No AI Slop)
+ * --------------------------------------------------------
+ * Direction: Retro-campus / warm editorial
+ *
+ * Tone: Nostalgic, warm, campus-magazine. Like a well-designed student union
+ * guide or dining pamphlet — confident, welcoming, and memorable. Not cold
+ * SaaS; not generic purple gradients.
+ *
+ * Typography:
+ *   - Display/headings: Fraunces (Google Fonts) — distinctive, warm, editorial
+ *   - Body: DM Sans — clean, readable, characterful without being loud
+ *
+ * Colors (CSS variables + Tailwind @theme):
+ *   - Background: warm cream/oat (#F5F0E8) — paper-like
+ *   - Primary text: deep teal (#1A3C34) — ink
+ *   - Accent: terracotta (#C75B39) — buttons, links, highlights
+ *   - Secondary accent: mustard/gold (#D4A853) — badges, star emphasis
+ *   - Muted: warm gray (#6B5B4F)
+ *
+ * Atmosphere: Subtle warmth throughout. Cards use soft shadows and warm
+ * borders. Avoid flat white; use cream and gentle gradients. One bold
+ * accent (terracotta) for CTAs; mustard for ratings/badges. Layout can
+ * break the grid with overlapping or asymmetric sections where it serves
+ * the content.
+ */
+
+@import "tailwindcss";
+
+@theme {
+  /* BARK palette */
+  --color-bark-cream: #F5F0E8;
+  --color-bark-ink: #1A3C34;
+  --color-bark-terracotta: #C75B39;
+  --color-bark-mustard: #D4A853;
+  --color-bark-muted: #6B5B4F;
+  --color-bark-paper: #EDE6DC;
+  --font-display: "Fraunces", serif;
+  --font-body: "DM Sans", sans-serif;
+}
+
+/* Base */
+body {
+  font-family: var(--font-body);
+  background-color: var(--color-bark-cream);
+  color: var(--color-bark-ink);
+  margin: 0;
+  min-height: 100vh;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.35s ease-out forwards;
+}
