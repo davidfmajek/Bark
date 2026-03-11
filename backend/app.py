@@ -15,6 +15,11 @@ app.config["SECRET_KEY"] = os.getenv("FLASK_SECRET_KEY", "dev-secret-change-in-p
 CORS(app, origins=os.getenv("CORS_ORIGINS", "http://localhost:5173").split(","))
 
 
+@app.route("/")
+def index():
+    return {"message": "BARK API. Use the frontend at http://localhost:5173", "health": "/api/health"}
+
+
 @app.route("/api/health")
 def health():
     return {"status": "ok"}

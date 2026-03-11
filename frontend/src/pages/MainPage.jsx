@@ -1,31 +1,32 @@
-import { useAuth } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 
 export function MainPage() {
-  const { signOut } = useAuth();
+  const { theme } = useTheme();
+  const dark = theme === 'dark';
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-bark-cream">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(212,168,83,0.16),_transparent_28%),linear-gradient(180deg,_rgba(245,240,232,1)_0%,_rgba(237,230,220,0.9)_100%)]" />
-      <div className="absolute inset-0 opacity-30 [background-image:radial-gradient(rgba(26,60,52,0.06)_1px,transparent_1px)] [background-size:18px_18px]" />
+    <div className={`relative min-h-[calc(100vh-3.5rem)] overflow-hidden ${dark ? 'bg-[#0f1219]' : 'bg-white'}`}>
+      {dark ? (
+        <>
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,191,62,0.08),_transparent_35%)]" />
+          <div className="absolute inset-0 opacity-30 [background-image:radial-gradient(rgba(255,255,255,0.05)_1px,transparent_1px)] [background-size:18px_18px]" />
+        </>
+      ) : (
+        <>
+          <div className="absolute inset-0 opacity-30 [background-image:radial-gradient(rgba(0,0,0,0.04)_1px,transparent_1px)] [background-size:18px_18px]" />
+        </>
+      )}
 
-      <div className="relative z-10 mx-auto flex min-h-screen max-w-4xl items-center justify-center px-6">
-        <button
-          type="button"
-          onClick={() => signOut()}
-          className="absolute right-6 top-6 rounded-full border border-bark-ink/15 bg-white/70 px-5 py-2 font-body text-sm font-semibold text-bark-ink shadow-sm transition-colors hover:bg-white"
-        >
-          Sign out
-        </button>
-
-        <div className="w-full max-w-xl rounded-[28px] border border-bark-ink/10 bg-white/55 px-8 py-12 text-center shadow-[0_24px_80px_rgba(26,60,52,0.10)] backdrop-blur-sm">
-          <p className="mb-3 font-body text-sm font-semibold uppercase tracking-[0.28em] text-bark-terracotta/80">
+      <div className="relative z-10 mx-auto flex min-h-[calc(100vh-3.5rem)] max-w-4xl items-center justify-center px-6">
+        <div className={`w-full max-w-xl rounded-[28px] border px-8 py-12 text-center backdrop-blur-sm ${dark ? 'border-white/10 bg-[#161b26] shadow-xl' : 'border-black/10 bg-white shadow-lg'}`}>
+          <p className={`mb-3 font-body text-sm font-semibold uppercase tracking-[0.28em] ${dark ? 'text-[#f5bf3e]/80' : 'text-[#D4A017]'}`}>
             Main Page
           </p>
-          <h1 className="font-display text-4xl font-bold text-bark-ink sm:text-5xl">
+          <h1 className={`font-display text-4xl font-bold sm:text-5xl ${dark ? 'text-white' : 'text-black'}`}>
             Blank on purpose
           </h1>
-          <p className="mx-auto mt-4 max-w-md font-body text-lg leading-8 text-bark-muted">
-            You are signed in. I left this page empty so can build the rest of BARK from here.
+          <p className={`mx-auto mt-4 max-w-md font-body text-lg leading-8 ${dark ? 'text-white/75' : 'text-black/65'}`}>
+            You are signed in. I left this page empty so you can build the rest of BARK from here.
           </p>
         </div>
       </div>

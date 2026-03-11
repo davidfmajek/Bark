@@ -106,6 +106,7 @@ Use the shared values **I** provided:
 2. Put the shared anon/public key in `VITE_SUPABASE_ANON_KEY`
 3. Keep `CORS_ORIGINS` as `http://localhost:5173` unless your frontend runs on a different port
 
+
 ## 4. Run the app
 
 Open two terminals.
