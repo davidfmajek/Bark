@@ -4,18 +4,6 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../lib/supabase';
 
-function PawIcon({ className = '' }) {
-  return (
-    <svg viewBox="0 0 64 64" fill="currentColor" aria-hidden="true" className={className}>
-      <ellipse cx="19" cy="19" rx="6" ry="9" transform="rotate(-28 19 19)" />
-      <ellipse cx="32" cy="13" rx="6" ry="9" transform="rotate(-8 32 13)" />
-      <ellipse cx="45" cy="18" rx="6" ry="9" transform="rotate(18 45 18)" />
-      <ellipse cx="52" cy="31" rx="6" ry="8" transform="rotate(34 52 31)" />
-      <path d="M30 29c-7 0-15 7-15 16 0 7 6 11 11 11 4 0 6-2 9-4 3 2 5 4 9 4 7 0 11-5 11-11 0-9-9-16-16-16-3 0-5 1-9 0Z" />
-    </svg>
-  );
-}
-
 const AFFILIATION_OPTIONS = [
   { value: 'Student', label: 'Student' },
   { value: 'Professor', label: 'Professor' },
@@ -132,11 +120,9 @@ export function SignInPage() {
             )}
           </button>
         </div>
-        <Link to="/" className={`mb-8 flex items-center justify-center gap-2 transition-opacity hover:opacity-90 ${dark ? 'text-[#f5bf3e]' : 'text-[#D4A017]'}`}>
-          <PawIcon className="h-12 w-12 sm:h-14 sm:w-14" />
-          <span className={`font-display text-5xl font-extrabold tracking-tight sm:text-6xl ${dark ? 'text-white' : 'text-black'}`}>
-            BARK!
-          </span>
+        <Link to="/" className={`mb-8 flex items-center justify-center gap-2 transition-opacity hover:opacity-90 ${dark ? 'text-white' : 'text-black'}`}>
+          <img src="/logo.png" alt="" className="h-14 w-auto sm:h-16 sm:w-auto" />
+          <span className="font-display text-5xl font-extrabold tracking-tight sm:text-6xl">BARK!</span>
         </Link>
         <p className={`mb-10 text-center font-body text-xl font-semibold ${dark ? 'text-white/90' : 'text-black/70'}`}>
           Honest Reviews. Real Retrievers.

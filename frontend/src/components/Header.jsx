@@ -2,18 +2,11 @@ import { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-
-function PawIcon({ className = '' }) {
-  return (
-    <svg viewBox="0 0 64 64" fill="currentColor" aria-hidden="true" className={className}>
-      <ellipse cx="19" cy="19" rx="6" ry="9" transform="rotate(-28 19 19)" />
-      <ellipse cx="32" cy="13" rx="6" ry="9" transform="rotate(-8 32 13)" />
-      <ellipse cx="45" cy="18" rx="6" ry="9" transform="rotate(18 45 18)" />
-      <ellipse cx="52" cy="31" rx="6" ry="8" transform="rotate(34 52 31)" />
-      <path d="M30 29c-7 0-15 7-15 16 0 7 6 11 11 11 4 0 6-2 9-4 3 2 5 4 9 4 7 0 11-5 11-11 0-9-9-16-16-16-3 0-5 1-9 0Z" />
-    </svg>
-  );
-}
+import { supabase } from '../lib/supabase';
+import { ButtonGroup } from './ui/button-group';
+import { Button } from './ui/button';
+import { Input } from './ui/input';
+import { Search } from 'lucide-react';
 
 function SunIcon({ className = '' }) {
   return (
@@ -59,6 +52,25 @@ export function Header() {
   const navigate = useNavigate();
   const [profileOpen, setProfileOpen] = useState(false);
   const profileRef = useRef(null);
+  const [establishments, setEstablishments] = useState([]);
+  const [restaurantsOpen, setRestaurantsOpen] = useState(false);
+  const restaurantsRef = useRef(null);
+  const restaurantsOpenTimeout = useRef(null);
+  const restaurantsCloseTimeout = useRef(null);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      const { data, error } = await supabase
+        .from('establishments')
+        .select('establishment_id, name')
+        .eq('is_active', true)
+        .order('name');
+      if (mounted && !error) setEstablishments(data ?? []);
+    })();
+    return () => { mounted = false; };
+  }, []);
 
   useEffect(() => {
     if (!profileOpen) return;
@@ -68,6 +80,34 @@ export function Header() {
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
   }, [profileOpen]);
+
+  const clearRestaurantsTimeouts = () => {
+    if (restaurantsOpenTimeout.current) {
+      clearTimeout(restaurantsOpenTimeout.current);
+      restaurantsOpenTimeout.current = null;
+    }
+    if (restaurantsCloseTimeout.current) {
+      clearTimeout(restaurantsCloseTimeout.current);
+      restaurantsCloseTimeout.current = null;
+    }
+  };
+
+  const handleRestaurantsMouseEnter = () => {
+    clearRestaurantsTimeouts();
+    restaurantsOpenTimeout.current = setTimeout(() => setRestaurantsOpen(true), 120);
+  };
+
+  const handleRestaurantsMouseLeave = () => {
+    clearRestaurantsTimeouts();
+    restaurantsCloseTimeout.current = setTimeout(() => setRestaurantsOpen(false), 150);
+  };
+
+  const handleSearchSubmit = (e) => {
+    e?.preventDefault?.();
+    const params = new URLSearchParams();
+    if (searchQuery?.trim()) params.set('q', searchQuery.trim());
+    navigate(`/restaurants${params.toString() ? `?${params.toString()}` : ''}`);
+  };
 
   const handleSignOut = async () => {
     setProfileOpen(false);
@@ -89,10 +129,15 @@ export function Header() {
   const logoCls = isDark
     ? 'flex shrink-0 items-center gap-2 text-white transition-opacity hover:opacity-90'
     : 'flex shrink-0 items-center gap-2 text-black transition-opacity hover:opacity-85';
-  const pawCls = isDark ? 'h-8 w-8 text-[#f5bf3e]' : 'h-8 w-8 text-[#D4A017]';
   const signInCls = isDark
+    ? 'rounded-full px-4 py-2 font-body text-sm font-medium text-white/90 hover:bg-white/10 transition-colors'
+    : 'rounded-full px-4 py-2 font-body text-sm font-medium text-black hover:bg-black/5 transition-colors';
+  const signUpCls = isDark
     ? 'rounded-full bg-[#f5bf3e] px-4 py-2 font-body text-sm font-semibold text-[#16181f] hover:bg-[#ffd15e]'
     : 'rounded-full bg-[#D4A017] px-4 py-2 font-body text-sm font-semibold text-black shadow-sm hover:bg-[#c4920f]';
+  const searchGroupCls = isDark
+    ? 'bg-white/5 [&_input]:bg-transparent [&_input]:text-white [&_input]:placeholder:text-white/50'
+    : 'bg-black/5 [&_input]:bg-transparent [&_input]:text-black [&_input]:placeholder:text-black/50';
   const toggleCls = isDark
     ? 'rounded-full p-2 text-white/80 hover:bg-white/10 hover:text-[#f5bf3e] transition-colors'
     : 'rounded-full p-2 text-black/70 hover:bg-black/5 hover:text-[#D4A017] transition-colors';
@@ -104,20 +149,91 @@ export function Header() {
   const dropdownCls = isDark
     ? 'absolute right-0 top-full z-50 mt-2 min-w-[10rem] rounded-xl border border-white/10 bg-[#161b26] py-1 shadow-xl'
     : 'absolute right-0 top-full z-50 mt-2 min-w-[10rem] rounded-xl border border-black/10 bg-white py-1 shadow-lg';
+  const restaurantsDropdownCls = isDark
+    ? 'absolute left-0 top-full z-50 mt-2 min-w-[12rem] max-h-[min(20rem,70vh)] overflow-y-auto rounded-xl border border-white/10 bg-[#161b26] py-1 shadow-xl'
+    : 'absolute left-0 top-full z-50 mt-2 min-w-[12rem] max-h-[min(20rem,70vh)] overflow-y-auto rounded-xl border border-black/10 bg-white py-1 shadow-lg';
+  const restaurantsItemCls = isDark
+    ? 'block px-4 py-2 font-body text-sm font-medium text-white/90 transition-colors hover:bg-white/10 first:rounded-t-lg last:rounded-b-lg'
+    : 'block px-4 py-2 font-body text-sm font-medium text-black transition-colors hover:bg-black/5 first:rounded-t-lg last:rounded-b-lg';
 
   return (
     <header className={headerCls}>
-      <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-6 px-4 sm:px-6">
-        <Link to="/" className={logoCls} aria-label="BARK home">
-          <PawIcon className={pawCls} />
+      <div className="mx-auto flex h-14 max-w-6xl items-center gap-4 px-4 sm:gap-6 sm:px-6">
+        <Link to="/" className={`shrink-0 ${logoCls}`} aria-label="BARK home">
+          <img src="/logo.png" alt="" className="h-8 w-auto" />
           <span className="font-display text-xl font-bold tracking-tight">BARK!</span>
         </Link>
-        <nav className="hidden flex-1 justify-center gap-8 sm:flex" aria-label="Main">
-          <Link to="/" className={linkCls}>Browse</Link>
-          <Link to="/restaurants" className={linkCls}>Restaurants</Link>
-          <Link to={isAuthenticated ? '/my-reviews' : '/signin'} className={linkCls}>My Reviews</Link>
+
+        <form
+          onSubmit={handleSearchSubmit}
+          className="hidden min-w-0 flex-1 sm:block"
+          role="search"
+          aria-label="Search restaurants"
+        >
+          <ButtonGroup className={`h-9 w-full max-w-md rounded-lg ${searchGroupCls}`}>
+            <Input
+              type="search"
+              placeholder="Restaurants, food..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="min-w-0 border-0 shadow-none focus-visible:ring-0"
+              aria-label="Search"
+            />
+            <Button
+              type="submit"
+              variant="default"
+              size="icon"
+              className={isDark ? 'h-9 shrink-0 rounded-l-none !rounded-r-lg bg-[#f5bf3e] text-[#16181f] hover:bg-[#ffd15e]' : 'h-9 shrink-0 rounded-l-none !rounded-r-lg bg-[#D4A017] text-black hover:bg-[#c4920f]'}
+              aria-label="Search"
+            >
+              <Search className="h-4 w-4" />
+            </Button>
+          </ButtonGroup>
+        </form>
+
+        <nav className="hidden shrink-0 items-center gap-6 sm:flex" aria-label="Main">
+          <div
+            className="relative flex"
+            ref={restaurantsRef}
+            onMouseEnter={handleRestaurantsMouseEnter}
+            onMouseLeave={handleRestaurantsMouseLeave}
+          >
+            <Link
+              to="/restaurants"
+              className={`flex items-center gap-0.5 ${linkCls}`}
+              aria-haspopup="true"
+              aria-expanded={restaurantsOpen}
+            >
+              Restaurants
+              <ChevronDownIcon className={`h-4 w-4 shrink-0 transition-transform ${restaurantsOpen ? 'rotate-180' : ''} ${isDark ? 'text-white/70' : 'text-black/60'}`} />
+            </Link>
+            {restaurantsOpen && (
+              <div className={restaurantsDropdownCls} role="menu">
+                {establishments.length === 0 ? (
+                  <div className={`px-4 py-3 font-body text-sm ${isDark ? 'text-white/70' : 'text-black/60'}`}>
+                    No restaurants yet
+                  </div>
+                ) : (
+                  establishments.map((e) => (
+                    <Link
+                      key={e.establishment_id}
+                      to={`/restaurants?e=${e.establishment_id}`}
+                      className={restaurantsItemCls}
+                      role="menuitem"
+                    >
+                      {e.name}
+                    </Link>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+          <Link to="/restaurants" className={linkCls}>
+            Write a Review
+          </Link>
           <Link to="/map" className={linkCls}>Map</Link>
         </nav>
+
         <div className="flex shrink-0 items-center gap-2">
           <button
             type="button"
@@ -151,6 +267,14 @@ export function Header() {
               {profileOpen && (
                 <div className={dropdownCls} role="menu">
                   <Link
+                    to="/my-reviews"
+                    onClick={() => setProfileOpen(false)}
+                    className={`block px-4 py-2 font-body text-sm font-medium transition-colors ${isDark ? 'text-white/90 hover:bg-white/10' : 'text-black hover:bg-black/5'}`}
+                    role="menuitem"
+                  >
+                    My Reviews
+                  </Link>
+                  <Link
                     to="/profile"
                     onClick={() => setProfileOpen(false)}
                     className={`block px-4 py-2 font-body text-sm font-medium transition-colors ${isDark ? 'text-white/90 hover:bg-white/10' : 'text-black hover:bg-black/5'}`}
@@ -170,7 +294,10 @@ export function Header() {
               )}
             </div>
           ) : (
-            <Link to="/signin" className={signInCls}>Sign in</Link>
+            <div className="flex items-center gap-2">
+              <Link to="/signin" className={signInCls}>Log in</Link>
+              <Link to="/signin" className={signUpCls}>Sign up</Link>
+            </div>
           )}
         </div>
       </div>
