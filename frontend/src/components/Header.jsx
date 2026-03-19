@@ -58,6 +58,13 @@ export function Header() {
   const restaurantsOpenTimeout = useRef(null);
   const restaurantsCloseTimeout = useRef(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchDropdownOpen, setSearchDropdownOpen] = useState(false);
+  const searchRef = useRef(null);
+
+  const searchTrimmed = searchQuery.trim().toLowerCase();
+  const searchMatches = searchTrimmed
+    ? establishments.filter((e) => e.name.toLowerCase().includes(searchTrimmed))
+    : [];
 
   useEffect(() => {
     let mounted = true;
@@ -80,6 +87,14 @@ export function Header() {
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
   }, [profileOpen]);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (searchRef.current && !searchRef.current.contains(e.target)) setSearchDropdownOpen(false);
+    };
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, []);
 
   const clearRestaurantsTimeouts = () => {
     if (restaurantsOpenTimeout.current) {
@@ -104,10 +119,33 @@ export function Header() {
 
   const handleSearchSubmit = (e) => {
     e?.preventDefault?.();
-    const params = new URLSearchParams();
-    if (searchQuery?.trim()) params.set('q', searchQuery.trim());
-    navigate(`/restaurants${params.toString() ? `?${params.toString()}` : ''}`);
+    const q = searchQuery?.trim() ?? '';
+    setSearchDropdownOpen(false);
+    if (!q) {
+      navigate('/restaurants');
+      return;
+    }
+    const match = establishments.find((e) => e.name.toLowerCase() === q.toLowerCase());
+    if (match) {
+      navigate(`/restaurants?e=${match.establishment_id}`);
+      setSearchQuery('');
+      return;
+    }
+    if (searchMatches.length === 1) {
+      navigate(`/restaurants?e=${searchMatches[0].establishment_id}`);
+      setSearchQuery('');
+      return;
+    }
+    navigate(`/restaurants?q=${encodeURIComponent(q)}`);
   };
+
+  const handleSearchResultSelect = (establishmentId) => {
+    setSearchQuery('');
+    setSearchDropdownOpen(false);
+    navigate(`/restaurants?e=${establishmentId}`);
+  };
+
+  const showSearchDropdown = searchDropdownOpen && searchTrimmed.length > 0;
 
   const handleSignOut = async () => {
     setProfileOpen(false);
@@ -164,32 +202,73 @@ export function Header() {
           <span className="font-display text-xl font-bold tracking-tight">BARK!</span>
         </Link>
 
-        <form
-          onSubmit={handleSearchSubmit}
-          className="hidden min-w-0 flex-1 sm:block"
-          role="search"
-          aria-label="Search restaurants"
-        >
-          <ButtonGroup className={`h-9 w-full max-w-md rounded-lg ${searchGroupCls}`}>
-            <Input
-              type="search"
-              placeholder="Restaurants, food..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="min-w-0 border-0 shadow-none focus-visible:ring-0"
-              aria-label="Search"
-            />
-            <Button
-              type="submit"
-              variant="default"
-              size="icon"
-              className={isDark ? 'h-9 shrink-0 rounded-l-none !rounded-r-lg bg-[#f5bf3e] text-[#16181f] hover:bg-[#ffd15e]' : 'h-9 shrink-0 rounded-l-none !rounded-r-lg bg-[#D4A017] text-black hover:bg-[#c4920f]'}
-              aria-label="Search"
+        <div ref={searchRef} className="relative hidden min-w-0 flex-1 sm:block">
+          <form
+            onSubmit={handleSearchSubmit}
+            className="w-full max-w-md"
+            role="search"
+            aria-label="Search restaurants"
+          >
+            <ButtonGroup className={`h-9 w-full rounded-lg ${searchGroupCls}`}>
+              <Input
+                type="search"
+                placeholder="Restaurants, food..."
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setSearchDropdownOpen(true);
+                }}
+                onFocus={() => searchTrimmed && setSearchDropdownOpen(true)}
+                className="min-w-0 flex-1 border-0 shadow-none focus-visible:ring-0"
+                aria-label="Search restaurants"
+                aria-autocomplete="list"
+                aria-expanded={showSearchDropdown}
+                aria-controls="search-results"
+                id="header-search-input"
+              />
+              <Button
+                type="submit"
+                variant="default"
+                size="icon"
+                className={isDark ? 'h-9 shrink-0 rounded-l-none !rounded-r-lg bg-[#f5bf3e] text-[#16181f] hover:bg-[#ffd15e]' : 'h-9 shrink-0 rounded-l-none !rounded-r-lg bg-[#D4A017] text-black hover:bg-[#c4920f]'}
+                aria-label="Search"
+              >
+                <Search className="h-4 w-4" />
+              </Button>
+            </ButtonGroup>
+          </form>
+          {showSearchDropdown && (
+            <div
+              id="search-results"
+              role="listbox"
+              className={`absolute left-0 top-full z-50 mt-1 w-full max-w-md overflow-hidden rounded-xl border shadow-lg ${
+                isDark ? 'border-white/10 bg-[#161b26]' : 'border-black/10 bg-white'
+              }`}
             >
-              <Search className="h-4 w-4" />
-            </Button>
-          </ButtonGroup>
-        </form>
+              {searchMatches.length === 0 ? (
+                <div className={`px-4 py-3 font-body text-sm ${isDark ? 'text-white/60' : 'text-black/60'}`}>
+                  No restaurants match &quot;{searchQuery.trim()}&quot;
+                </div>
+              ) : (
+                <ul className="max-h-[min(18rem,60vh)] overflow-y-auto py-1">
+                  {searchMatches.map((e) => (
+                    <li key={e.establishment_id} role="option">
+                      <button
+                        type="button"
+                        className={`block w-full px-4 py-2.5 text-left font-body text-sm font-medium transition-colors ${
+                          isDark ? 'text-white/90 hover:bg-white/10' : 'text-black hover:bg-black/5'
+                        }`}
+                        onClick={() => handleSearchResultSelect(e.establishment_id)}
+                      >
+                        {e.name}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
 
         <nav className="hidden shrink-0 items-center gap-6 sm:flex" aria-label="Main">
           <div
@@ -296,7 +375,7 @@ export function Header() {
           ) : (
             <div className="flex items-center gap-2">
               <Link to="/signin" className={signInCls}>Log in</Link>
-              <Link to="/signin" className={signUpCls}>Sign up</Link>
+              <Link to="/signin?mode=signup" className={signUpCls}>Sign up</Link>
             </div>
           )}
         </div>

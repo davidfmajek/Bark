@@ -12,4 +12,14 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  server: {
+    fs: {
+      // Allow importing slide images stored in the Cursor project folder.
+      allow: [
+        path.resolve(__dirname),
+        path.resolve(__dirname, '..'),
+        path.resolve(__dirname, '../../.cursor/projects/c-Users-David-Bark/assets'),
+      ],
+    },
+  },
 })

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../lib/supabase';
@@ -16,7 +16,9 @@ const AFFILIATION_OPTIONS = [
 export function SignInPage() {
   const { isAuthenticated, loading, signIn, signUp } = useAuth();
   const navigate = useNavigate();
-  const [mode, setMode] = useState('login');
+  const [searchParams] = useSearchParams();
+  const initialMode = searchParams.get('mode') === 'signup' ? 'signup' : 'login';
+  const [mode, setMode] = useState(initialMode);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -33,10 +35,20 @@ export function SignInPage() {
     }
   }, [loading, isAuthenticated, navigate]);
 
+  useEffect(() => {
+    setMode(searchParams.get('mode') === 'signup' ? 'signup' : 'login');
+  }, [searchParams]);
+
+  const isUmbcEmail = (addr) => /@umbc\.edu$/i.test((addr || '').trim());
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setNotice('');
+    if (mode === 'signup' && !isUmbcEmail(email)) {
+      setError('Only @umbc.edu email addresses can create an account.');
+      return;
+    }
     setSubmitting(true);
     try {
       if (mode === 'login') {
@@ -166,6 +178,11 @@ export function SignInPage() {
                 className={dark ? 'w-full rounded-xl border border-white/10 bg-[#1e2430] px-4 py-3 text-white outline-none placeholder:text-white/35 focus:border-[#f5bf3e]/60 focus:ring-2 focus:ring-[#f5bf3e]/25' : 'w-full rounded-xl border border-black/15 bg-white px-4 py-3 text-black outline-none placeholder:text-black/40 focus:border-[#D4A017]/60 focus:ring-2 focus:ring-[#D4A017]/25'}
                 placeholder="example@umbc.edu"
               />
+              {mode === 'signup' && (
+                <p className={`mt-1.5 text-xs ${dark ? 'text-white/55' : 'text-black/55'}`}>
+                  Only @umbc.edu addresses can create an account.
+                </p>
+              )}
             </div>
             {mode === 'signup' && (
               <>
