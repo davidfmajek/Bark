@@ -7,6 +7,7 @@ import { ButtonGroup } from './ui/button-group';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Search } from 'lucide-react';
+import { nameToSlug } from '../lib/utils';
 
 function SunIcon({ className = '' }) {
   return (
@@ -127,22 +128,25 @@ export function Header() {
     }
     const match = establishments.find((e) => e.name.toLowerCase() === q.toLowerCase());
     if (match) {
-      navigate(`/restaurants?e=${match.establishment_id}`);
+      const sluggedEstablishmentName = nameToSlug(match.name);
+      navigate(`/restaurants?e=${sluggedEstablishmentName}`);
       setSearchQuery('');
       return;
     }
     if (searchMatches.length === 1) {
-      navigate(`/restaurants?e=${searchMatches[0].establishment_id}`);
+      const sluggedEstablishmentName = nameToSlug(searchMatches[0].name);
+      navigate(`/restaurants?e=${sluggedEstablishmentName}`);
       setSearchQuery('');
       return;
     }
     navigate(`/restaurants?q=${encodeURIComponent(q)}`);
   };
 
-  const handleSearchResultSelect = (establishmentId) => {
+  const handleSearchResultSelect = (establishmentName) => {
+    const sluggedEstablishmentName = nameToSlug(establishmentName);
     setSearchQuery('');
     setSearchDropdownOpen(false);
-    navigate(`/restaurants?e=${establishmentId}`);
+    navigate(`/restaurants?e=${sluggedEstablishmentName}`);
   };
 
   const showSearchDropdown = searchDropdownOpen && searchTrimmed.length > 0;
@@ -258,7 +262,7 @@ export function Header() {
                         className={`block w-full px-4 py-2.5 text-left font-body text-sm font-medium transition-colors ${
                           isDark ? 'text-white/90 hover:bg-white/10' : 'text-black hover:bg-black/5'
                         }`}
-                        onClick={() => handleSearchResultSelect(e.establishment_id)}
+                        onClick={() => handleSearchResultSelect(e.name)}
                       >
                         {e.name}
                       </button>
@@ -296,7 +300,7 @@ export function Header() {
                   establishments.map((e) => (
                     <Link
                       key={e.establishment_id}
-                      to={`/restaurants?e=${e.establishment_id}`}
+                      to={`/restaurants?e=${nameToSlug(e.name)}`}
                       className={restaurantsItemCls}
                       role="menuitem"
                     >

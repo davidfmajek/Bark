@@ -9,6 +9,7 @@ import { ProfilePage } from './pages/ProfilePage';
 import { RestaurantsPage } from './pages/RestaurantsPage';
 import { MyReviewsPage } from './pages/MyReviewsPage';
 import { MapPage } from './pages/MapPage';
+import { WriteAReviewPage } from './pages/WriteAReviewPage';
 
 function RequireAuth({ children }) {
   const { loading, isAuthenticated } = useAuth();
@@ -59,6 +60,8 @@ function AppRoutes() {
             </RequireAuth>
           )}
         />
+        <Route path="/restaurants/:slug/writeareview" element={<WriteAReviewPage />} />
+
         <Route path="/map" element={<MapPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
