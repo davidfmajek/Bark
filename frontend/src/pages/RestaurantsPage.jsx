@@ -1,23 +1,29 @@
-import React from 'react';
-import { Clock, MapPin, ArrowRight, Star, StarHalf } from 'lucide-react';
-import { useTheme } from '../contexts/ThemeContext';
+import React from "react";
+import { Clock, MapPin, ArrowRight, Star, StarHalf, FilePenLine, } from "lucide-react";
+import { useAuth } from "../contexts/AuthContext";
+import { useTheme } from "../contexts/ThemeContext";
+import { nameToSlug } from "../lib/utils";
 
 export function RestaurantsPage() {
   const { theme } = useTheme();
-  const dark = theme === 'dark';
+  const dark = theme === "dark";
+  const { isAuthenticated } = useAuth();
 
   // Mock data - in a real app, this would come from props or an API
   const TrueGrits = {
     name: "True Grit's",
+    slug: nameToSlug("True Grit's"),
     rating: 4.8,
     reviews: 124,
     hours: "7:00 AM - 2:00 pm, 4:00 - 8:00 pm",
     location: "1000 Hilltop Cir, Baltimore, MD 21250",
-    image: "../../public/trueGritRestaurantPage.jpg"
+    image: "../../public/trueGritRestaurantPage.jpg",
   };
 
   return (
-    <div className={`min-h-[calc(100vh-3.5rem)] ${dark ? 'text-white' : 'text-black'}`}>
+    <div
+      className={`min-h-[calc(100vh-3.5rem)] ${dark ? "text-white" : "text-black"}`}
+    >
       {/* Background Logic */}
       {dark ? (
         <>
@@ -34,10 +40,9 @@ export function RestaurantsPage() {
 
       <main className="container mx-auto px-6 py-12">
         <div className="max-w-4xl mx-auto">
-          <a 
-            href="/restaurant-details" 
+          <div
             className={`group relative block overflow-hidden rounded-3xl border transition-all duration-500 hover:shadow-[0_20px_50px_rgba(255,191,62,0.15)] 
-              ${dark ? 'border-white/10 bg-gray-900/50' : 'border-black/5 bg-white'}`}
+              ${dark ? "border-white/10 bg-gray-900/50" : "border-black/5 bg-white"}`}
           >
             {/* Image Section */}
             <div className="aspect-[16/9] w-full overflow-hidden sm:aspect-[21/9]">
@@ -69,7 +74,7 @@ export function RestaurantsPage() {
                   <h2 className="text-3xl font-bold text-white sm:text-4xl">
                     {TrueGrits.name}
                   </h2>
-                  
+
                   <div className="flex flex-wrap gap-y-2 gap-x-6 text-gray-300">
                     <div className="flex items-center gap-2">
                       <Clock className="w-4 h-4 text-[#ffbf3e]" />
@@ -82,14 +87,28 @@ export function RestaurantsPage() {
                   </div>
                 </div>
 
-                {/* Button Style Link */}
-                <div className="inline-flex items-center gap-2 rounded-xl bg-[#ffbf3e] px-6 py-3 text-black font-bold transition-all group-hover:bg-white group-hover:scale-105 active:scale-95">
-                  To {TrueGrits.name} 
-                  <ArrowRight className="w-5 h-5 transition-transform group-hover:translate-x-1" />
+                {/* Button Style Links */}
+                <div className="flex flex-col gap-2">
+                  {isAuthenticated == true && (
+                    <a
+                      href={`/restaurants/${TrueGrits.slug}/writeareview`}
+                      className="inline-flex items-center gap-2 rounded-xl bg-[#ffbf3e] px-6 py-3 text-black font-bold transition-all hover:bg-white hover:scale-105 active:scale-100"
+                    >
+                      Write a Review
+                      <FilePenLine className="w-5 h-5" />
+                    </a>
+                  )}
+                  <a
+                    href="/restaurant-details"
+                    className="inline-flex items-center gap-2 rounded-xl bg-[#ffbf3e] px-8 py-3 text-black font-bold transition-all hover:bg-white hover:scale-105 active:scale-100"
+                  >
+                    To {TrueGrits.name}
+                    <ArrowRight className="w-5 h-5" />
+                  </a>
                 </div>
               </div>
             </div>
-          </a>
+          </div>
         </div>
       </main>
     </div>
