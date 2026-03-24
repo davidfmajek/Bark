@@ -192,11 +192,11 @@ export function Header() {
     ? 'absolute right-0 top-full z-50 mt-2 min-w-[10rem] rounded-xl border border-white/10 bg-[#161b26] py-1 shadow-xl'
     : 'absolute right-0 top-full z-50 mt-2 min-w-[10rem] rounded-xl border border-black/10 bg-white py-1 shadow-lg';
   const restaurantsDropdownCls = isDark
-    ? 'absolute left-0 top-full z-50 mt-2 min-w-[12rem] max-h-[min(20rem,70vh)] overflow-y-auto rounded-xl border border-white/10 bg-[#161b26] py-1 shadow-xl'
-    : 'absolute left-0 top-full z-50 mt-2 min-w-[12rem] max-h-[min(20rem,70vh)] overflow-y-auto rounded-xl border border-black/10 bg-white py-1 shadow-lg';
+    ? 'absolute left-0 top-full z-50 mt-2 w-[min(44rem,90vw)] max-h-[min(24rem,70vh)] overflow-y-auto rounded-xl border border-white/10 bg-[#161b26] p-3 shadow-xl'
+    : 'absolute left-0 top-full z-50 mt-2 w-[min(44rem,90vw)] max-h-[min(24rem,70vh)] overflow-y-auto rounded-xl border border-black/10 bg-white p-3 shadow-lg';
   const restaurantsItemCls = isDark
-    ? 'block px-4 py-2 font-body text-sm font-medium text-white/90 transition-colors hover:bg-white/10 first:rounded-t-lg last:rounded-b-lg'
-    : 'block px-4 py-2 font-body text-sm font-medium text-black transition-colors hover:bg-black/5 first:rounded-t-lg last:rounded-b-lg';
+    ? 'block rounded-lg px-3 py-2 font-body text-sm font-medium text-white/90 transition-colors hover:bg-white/10'
+    : 'block rounded-lg px-3 py-2 font-body text-sm font-medium text-black transition-colors hover:bg-black/5';
 
   return (
     <header className={headerCls}>
@@ -297,16 +297,18 @@ export function Header() {
                     No restaurants yet
                   </div>
                 ) : (
-                  establishments.map((e) => (
-                    <Link
-                      key={e.establishment_id}
-                      to={`/restaurants?e=${nameToSlug(e.name)}`}
-                      className={restaurantsItemCls}
-                      role="menuitem"
-                    >
-                      {e.name}
-                    </Link>
-                  ))
+                  <div className="grid grid-cols-1 gap-1 sm:grid-cols-2 lg:grid-cols-3">
+                    {establishments.map((e) => (
+                      <Link
+                        key={e.establishment_id}
+                        to={`/restaurants?e=${nameToSlug(e.name)}`}
+                        className={restaurantsItemCls}
+                        role="menuitem"
+                      >
+                        {e.name}
+                      </Link>
+                    ))}
+                  </div>
                 )}
               </div>
             )}

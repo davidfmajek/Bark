@@ -2,11 +2,11 @@
 
 -- Enums
 CREATE TYPE affiliation_enum AS ENUM (
-  'Student', 'Professor', 'Prospective_Student', 'Incoming_Student', 'Parent', 'Other'
+  'Student', 'Professor', 'Incoming_Student', 'Other'
 );
 
 CREATE TYPE category_enum AS ENUM (
-  'Dining_Hall', 'Cafe', 'Food_Truck', 'Restaurant', 'Convenience'
+  'Dining_Hall', 'Cafe', 'Restaurant', 'Convenience'
 );
 
 CREATE TYPE day_of_week_enum AS ENUM (
