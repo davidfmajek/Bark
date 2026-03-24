@@ -311,7 +311,7 @@ export function Header() {
               </div>
             )}
           </div>
-          <Link to="/restaurants" className={linkCls}>
+          <Link to="/restaurants/true-grits/writeareview" className={linkCls}>
             Write a Review
           </Link>
           <Link to="/map" className={linkCls}>Map</Link>
