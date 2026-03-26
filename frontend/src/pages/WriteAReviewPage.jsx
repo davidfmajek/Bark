@@ -76,6 +76,32 @@ export function WriteAReviewPage() {
     };
   }, []);
 
+  if (user == null || Establishment == null) {
+    return (
+      <div
+        className={`min-h-[calc(100vh-3.5rem)] ${dark ? "text-white" : "text-black"}`}
+      >
+        {/* Background Logic */}
+        {dark ? (
+	  <>
+	    <div className="fixed inset-0 -z-10 bg-[#0f1219]" />
+	    <div className="fixed inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(255,191,62,0.08),_transparent_35%)]" />
+	    <div className="fixed inset-0 -z-10 opacity-30 [background-image:radial-gradient(rgba(255,255,255,0.05)_1px,transparent_1px)] [background-size:18px_18px]" />
+	  </>
+        ) : (
+	  <>
+	    <div className="fixed inset-0 -z-10 bg-white" />
+	    <div className="fixed inset-0 -z-10 opacity-30 [background-image:radial-gradient(rgba(0,0,0,0.04)_1px,transparent_1px)] [background-size:18px_18px]" />
+	  </>
+        )}
+        <main className="container mx-auto px-6 py-12">
+          <div className="max-w-4xl mx-auto">
+	    <h1 className="text-3xl font-bold mb-6">Loading...</h1>
+	  </div>
+        </main>
+      </div>
+    );
+  }
   return (
     <div
       className={`min-h-[calc(100vh-3.5rem)] ${dark ? "text-white" : "text-black"}`}
