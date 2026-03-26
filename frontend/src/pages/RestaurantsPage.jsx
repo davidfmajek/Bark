@@ -69,7 +69,7 @@ export function RestaurantsPage() {
                     <div className="aspect-[16/9] w-full overflow-hidden sm:aspect-[21/9]">
                       <img
                         alt={restaurant.name}
-                        src={`restaurantPage/${restaurant.establishment_id}.png`}
+                        src={restaurant.header_image}
                         className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110"
                       />
                       <div className={`absolute inset-0 bg-gradient-to-t ${dark ? 'from-[#0f1219] via-[#0f1219]/40' : 'from-black/70 via-black/20'} to-transparent`} />

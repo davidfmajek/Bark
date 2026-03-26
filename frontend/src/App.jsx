@@ -10,7 +10,7 @@ import { RestaurantsPage } from './pages/RestaurantsPage';
 import { MyReviewsPage } from './pages/MyReviewsPage';
 import { MapPage } from './pages/MapPage';
 import { WriteAReviewPage } from './pages/WriteAReviewPage';
-
+import { EstablishmentPage } from './pages/EstablishmentPage';
 function RequireAuth({ children }) {
   const { loading, isAuthenticated } = useAuth();
 
@@ -61,7 +61,7 @@ function AppRoutes() {
           )}
         />
         <Route path="/restaurants/:slug/writeareview" element={<WriteAReviewPage />} />
-
+        <Route path="/restaurants/:slug" element={<EstablishmentPage />} />
         <Route path="/map" element={<MapPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
