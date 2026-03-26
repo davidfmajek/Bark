@@ -1,24 +1,26 @@
 import { Star } from "lucide-react";
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { useTheme } from "../contexts/ThemeContext";
 import { nameToSlug } from "../lib/utils";
 import { supabase } from "../lib/supabase";
 
-async function writeReview(uid, eid, rating, reviewText) {
+async function writeReview(uid, estInfo, rating, reviewText, navigate) {
   const { writeData, writeError } = await supabase.from("reviews").insert({
     user_id: uid,
-    establishment_id: eid,
-    rating: rating,
+    establishment_id: estInfo.id,
+    rating: rating - 1,
     body: reviewText,
     is_flagged: false,
   });
   if (writeError) {
     console.error("Error adding review to database: ", writeError);
   } else {
-    console.log("Review successfully added: ", writeData);
+    alert(`Review successfully written for ${estInfo.name}`);
+    navigate("/restaurants");
   }
 }
+
 
 export function WriteAReviewPage() {
   const { theme } = useTheme();
@@ -29,6 +31,7 @@ export function WriteAReviewPage() {
   const [Rating, setRating] = useState(0);
   const [hover, setHover] = useState(0);
   const [ReviewText, setReviewText] = useState("");
+  const navigate = useNavigate();
 
   useEffect(() => {
     async function loadUser() {
@@ -42,7 +45,7 @@ export function WriteAReviewPage() {
 
     const { data: authListener } = supabase.auth.onAuthStateChange(
       (event, session) => {
-        setUser(event == "SIGNED_IN" ? session.user : null);
+        setUser(session?.user ?? null);
       },
     );
     return () => authListener.subscription.unsubscribe();
@@ -144,9 +147,9 @@ export function WriteAReviewPage() {
             <div>
               <button
                 onClick={() =>
-                  writeReview(user.id, Establishment.id, Rating, ReviewText)
+                  writeReview(user.id, Establishment, Rating, ReviewText, navigate)
                 }
-                type="submit"
+                type="button"
                 className={`inline-flex items-center justify-center rounded-md border px-4 py-2 text-sm font-medium transition ${
                   dark
                     ? "border-white/15 bg-white/5 text-white/90 hover:bg-white/10"
