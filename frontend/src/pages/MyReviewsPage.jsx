@@ -40,6 +40,9 @@ export function MyReviewsPage() {
   const [draftBody, setDraftBody] = useState('');
   const [editError, setEditError] = useState('');
   const [savingReviewId, setSavingReviewId] = useState(null);
+  const [deletingReviewId, setDeletingReviewId] = useState(null);
+  const [deleteError, setDeleteError] = useState('');
+  const [deleteErrorReviewId, setDeleteErrorReviewId] = useState(null);
 
   useEffect(() => {
     let mounted = true;
@@ -159,6 +162,34 @@ export function MyReviewsPage() {
     cancelEditing();
   }
 
+  async function deleteReview(review) {
+    setDeleteError('');
+    setDeleteErrorReviewId(null);
+    const confirmed = window.confirm('Delete this review permanently?');
+    if (!confirmed) return;
+
+    setDeletingReviewId(review.review_id);
+    const { error } = await supabase
+      .from('reviews')
+      .delete()
+      .eq('review_id', review.review_id)
+      .eq('user_id', user.id);
+
+    if (error) {
+      console.error('Error deleting review:', error);
+      setDeleteError(error.message || 'Unable to delete review right now.');
+      setDeleteErrorReviewId(review.review_id);
+      setDeletingReviewId(null);
+      return;
+    }
+
+    setReviews((prev) => prev.filter((item) => item.review_id !== review.review_id));
+    if (editingReviewId === review.review_id) {
+      cancelEditing();
+    }
+    setDeletingReviewId(null);
+  }
+
   return (
     <div className={`relative min-h-[calc(100vh-3.5rem)] overflow-hidden ${dark ? 'bg-[#0f1219]' : 'bg-white'}`}>
       {dark ? (
@@ -209,6 +240,7 @@ export function MyReviewsPage() {
                   const displayRating = normalizeDisplayRating(review.rating);
                   const isEditing = editingReviewId === review.review_id;
                   const isSaving = savingReviewId === review.review_id;
+                  const isDeleting = deletingReviewId === review.review_id;
                   return (
                     <article key={review.review_id} className="py-5">
                       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -285,7 +317,7 @@ export function MyReviewsPage() {
                             <button
                               type="button"
                               onClick={cancelEditing}
-                              disabled={isSaving}
+                              disabled={isSaving || isDeleting}
                               className={`inline-flex items-center justify-center rounded-full border px-4 py-2 text-sm font-semibold transition ${
                                 dark
                                   ? 'border-white/15 text-white/85 hover:bg-white/10 disabled:opacity-60'
@@ -302,17 +334,35 @@ export function MyReviewsPage() {
                             {review.body || 'No review text provided.'}
                           </p>
                           <div className="mt-3">
-                            <button
-                              type="button"
-                              onClick={() => beginEditing(review)}
-                              className={`inline-flex items-center justify-center rounded-full border px-4 py-1.5 text-sm font-semibold transition ${
-                                dark
-                                  ? 'border-white/15 text-white/85 hover:bg-white/10'
-                                  : 'border-black/15 text-black/85 hover:bg-black/5'
-                              }`}
-                            >
-                              Edit Review
-                            </button>
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => beginEditing(review)}
+                                disabled={isDeleting}
+                                className={`inline-flex items-center justify-center rounded-full border px-4 py-1.5 text-sm font-semibold transition ${
+                                  dark
+                                    ? 'border-white/15 text-white/85 hover:bg-white/10 disabled:opacity-60'
+                                    : 'border-black/15 text-black/85 hover:bg-black/5 disabled:opacity-60'
+                                }`}
+                              >
+                                Edit Review
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => deleteReview(review)}
+                                disabled={isDeleting}
+                                className={`inline-flex items-center justify-center rounded-full border px-4 py-1.5 text-sm font-semibold transition ${
+                                  dark
+                                    ? 'border-red-400/40 text-red-300 hover:bg-red-500/15 disabled:opacity-60'
+                                    : 'border-red-300 text-red-700 hover:bg-red-50 disabled:opacity-60'
+                                }`}
+                              >
+                                {isDeleting ? 'Deleting...' : 'Delete'}
+                              </button>
+                            </div>
+                            {deleteError && deleteErrorReviewId === review.review_id && deletingReviewId === null ? (
+                              <p className="mt-2 text-sm font-semibold text-red-500">{deleteError}</p>
+                            ) : null}
                           </div>
                         </>
                       )}

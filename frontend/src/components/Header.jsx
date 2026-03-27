@@ -142,8 +142,14 @@ export function Header() {
   const handleSearchResultSelect = (establishmentId) => {
     setSearchQuery('');
     setSearchDropdownOpen(false);
+<<<<<<< HEAD
     navigate(`/restaurants?e=${establishmentId}`);
   };
+=======
+    // Navigate to the clean path instead of a query param
+    navigate(`/restaurants/${sluggedEstablishmentName}`);
+};
+>>>>>>> fac707bbd2b581d661cfe31df6baf60c016457cd
 
   const showSearchDropdown = searchDropdownOpen && searchTrimmed.length > 0;
 
@@ -294,6 +300,7 @@ export function Header() {
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 gap-1 sm:grid-cols-2 lg:grid-cols-3">
+<<<<<<< HEAD
                     {establishments.map((e) => (
                       <Link
                         key={e.establishment_id}
@@ -304,6 +311,22 @@ export function Header() {
                         {e.name}
                       </Link>
                     ))}
+=======
+                    {/* Inside the restaurantsOpen dropdown mapping */}
+                      {establishments.map((e) => (
+                        <Link
+                          key={e.establishment_id}
+                          // Change this from ?e=slug to /slug
+                          to={`/restaurants/${nameToSlug(e.name)}`} 
+                          className={restaurantsItemCls}
+                          role="menuitem"
+                          // Add this to close the dropdown immediately on click
+                          onClick={() => setRestaurantsOpen(false)}
+                        >
+                          {e.name}
+                        </Link>
+                      ))}
+>>>>>>> fac707bbd2b581d661cfe31df6baf60c016457cd
                   </div>
                 )}
               </div>
