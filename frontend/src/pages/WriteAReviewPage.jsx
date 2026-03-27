@@ -2,7 +2,6 @@ import { Star } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useTheme } from "../contexts/ThemeContext";
-import { nameToSlug } from "../lib/utils";
 import { supabase } from "../lib/supabase";
 
 async function writeReview(uid, estInfo, rating, reviewText, navigate) {
@@ -25,7 +24,7 @@ async function writeReview(uid, estInfo, rating, reviewText, navigate) {
 export function WriteAReviewPage() {
   const { theme } = useTheme();
   const dark = theme === "dark";
-  const { slug } = useParams();
+  const { slug: establishmentId } = useParams();
   const [user, setUser] = useState(null);
   const [Establishment, setEstablishment] = useState(null);
   const [Rating, setRating] = useState(0);
@@ -62,7 +61,11 @@ export function WriteAReviewPage() {
       if (error || data == null) {
         console.error("Error fetching establishment: ", (error ?? ""));
       };
-      const establishment = data.find((e) => nameToSlug(e.name) == slug);
+
+      const establishment = data.find(
+        (e) => String(e.establishment_id) === String(establishmentId),
+      );
+
       if (mounted && establishment)
         setEstablishment({
           id: establishment.establishment_id,
@@ -74,7 +77,7 @@ export function WriteAReviewPage() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [establishmentId]);
 
   if (user == null || Establishment == null) {
     return (

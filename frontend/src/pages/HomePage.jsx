@@ -4,13 +4,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { PictureCarousel } from '../components/PictureCarousel';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
-
-const CAROUSEL_IMAGES = [
-  { key: 'true-grit', src: '/carousel/true-grit.png', alt: "True Grit's dining hall at UMBC" },
-  { key: 'halal-shack', src: '/carousel/halal-shack.png', alt: 'The Halal Shack food court' },
-  { key: 'umbc-campus', src: '/carousel/umbc-campus.png', alt: 'UMBC campus aerial view' },
-  { key: 'wild-greens', src: '/carousel/wild-greens.png', alt: 'Wild Greens food counter' },
-];
+import { getRestaurantCarouselSlides } from '../lib/restaurantImages';
 
 function Stars({ rating, dark }) {
   const safeRating = Number.isFinite(rating) ? rating : 0;
@@ -49,6 +43,7 @@ export function HomePage() {
   const dark = theme === 'dark';
   const { isAuthenticated } = useAuth();
   const [trueGritEstablishmentId, setTrueGritEstablishmentId] = useState(null);
+  const restaurantSlides = getRestaurantCarouselSlides();
 
   useEffect(() => {
     let mounted = true;
@@ -75,11 +70,7 @@ export function HomePage() {
           className="h-full w-full"
           overlayClassName={dark ? 'bg-[#0f1219]/60' : 'bg-white/60'}
           imageClassName="h-full w-full object-cover blur-[6px] transform-gpu scale-110"
-          slides={CAROUSEL_IMAGES.map((img) => ({
-            key: img.key,
-            imageSrc: img.src,
-            alt: img.alt,
-          }))}
+          slides={restaurantSlides}
         />
       </div>
 
@@ -154,11 +145,7 @@ export function HomePage() {
                   overlayClassName={dark ? 'bg-black/25' : 'bg-black/10'}
                   intervalMs={4200}
                   imageClassName="h-full w-full object-cover"
-                  slides={CAROUSEL_IMAGES.map((img) => ({
-                    key: img.key,
-                    imageSrc: img.src,
-                    alt: img.alt,
-                  }))}
+                  slides={restaurantSlides}
                 />
               </div>
             </div>

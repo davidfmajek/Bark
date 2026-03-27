@@ -1,17 +1,22 @@
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase.js'; 
 import { Clock, MapPin, ArrowRight, Star, StarHalf, Loader2, FilePenLine } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from "../contexts/AuthContext"; // 1. Added Auth Context
-import { nameToSlug } from "../lib/utils";       // 2. Added Slug utility
+import { getRestaurantImageCandidates } from '../lib/restaurantImages';
 
 export function RestaurantsPage() {
   const { theme } = useTheme();
   const dark = theme === 'dark';
   const { isAuthenticated } = useAuth(); // 3. Get auth status
+  const [searchParams] = useSearchParams();
+  const filterEstablishmentId = searchParams.get('e');
 
   const [restaurants, setRestaurants] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [imageLoadErrors, setImageLoadErrors] = useState({});
+  const [imageSourceIndexes, setImageSourceIndexes] = useState({});
 
   useEffect(() => {
     async function fetchRestaurants() {
@@ -34,6 +39,13 @@ export function RestaurantsPage() {
     fetchRestaurants();
   }, []);
 
+  const restaurantsToShow =
+    filterEstablishmentId
+      ? restaurants.filter(
+          (r) => String(r.establishment_id) === String(filterEstablishmentId),
+        )
+      : restaurants;
+
   return (
     <div className={`min-h-[calc(100vh-3.5rem)] ${dark ? 'text-white' : 'text-black'}`}>
       {/* Background Logic */}
@@ -55,9 +67,11 @@ export function RestaurantsPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
-            {restaurants.map((restaurant) => {
-              // Create slug for the review URL
-              const slug = nameToSlug(restaurant.name);
+            {restaurantsToShow.map((restaurant) => {
+              const imageCandidates = getRestaurantImageCandidates(restaurant);
+              const imageCandidateIndex = imageSourceIndexes[restaurant.establishment_id] ?? 0;
+              const hasImage = !imageLoadErrors[restaurant.establishment_id] && imageCandidateIndex < imageCandidates.length;
+              const imageSrc = hasImage ? imageCandidates[imageCandidateIndex] : null;
               
               return (
                 <div key={restaurant.establishment_id} className="max-w-5xl mx-auto w-full">
@@ -67,11 +81,33 @@ export function RestaurantsPage() {
                   >
                     {/* Image Section */}
                     <div className="aspect-[16/9] w-full overflow-hidden sm:aspect-[21/9]">
-                      <img
-                        alt={restaurant.name}
-                        src={restaurant.header_image}
-                        className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110"
-                      />
+                      {!imageSrc ? (
+                        <div
+                          aria-label={`${restaurant.name} placeholder image`}
+                          className={`h-full w-full ${dark ? 'bg-[#111827]' : 'bg-gray-200'}`}
+                        />
+                      ) : (
+                        <img
+                          alt={restaurant.name}
+                          src={imageSrc}
+                          className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110"
+                          onError={() => {
+                            const nextIndex = imageCandidateIndex + 1;
+                            if (nextIndex < imageCandidates.length) {
+                              setImageSourceIndexes((prev) => ({
+                                ...prev,
+                                [restaurant.establishment_id]: nextIndex,
+                              }));
+                              return;
+                            }
+
+                            setImageLoadErrors((prev) => ({
+                              ...prev,
+                              [restaurant.establishment_id]: true,
+                            }));
+                          }}
+                        />
+                      )}
                       <div className={`absolute inset-0 bg-gradient-to-t ${dark ? 'from-[#0f1219] via-[#0f1219]/40' : 'from-black/70 via-black/20'} to-transparent`} />
                     </div>
 
@@ -113,7 +149,7 @@ export function RestaurantsPage() {
                         <div className="flex flex-col gap-3">
                           {isAuthenticated && (
                             <a
-                              href={`/restaurants/${slug}/writeareview`}
+                              href={`/restaurants/${restaurant.establishment_id}/writeareview`}
                               className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#ffbf3e] px-6 py-3 text-black font-bold transition-all hover:bg-white hover:scale-105 active:scale-95 whitespace-nowrap"
                             >
                               Write a Review
@@ -121,7 +157,7 @@ export function RestaurantsPage() {
                             </a>
                           )}
                           <a 
-                            href={`/restaurants/${slug}`} 
+                            href={`/restaurants/${restaurant.establishment_id}`} 
                             className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#ffbf3e] backdrop-blur-md border border-white/20 px-6 py-3 text-black font-bold transition-all hover:bg-[#ffffff] hover:text-black hover:scale-105 active:scale-95 whitespace-nowrap"
                           >
                             To {restaurant.name} 

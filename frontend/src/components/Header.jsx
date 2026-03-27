@@ -7,7 +7,6 @@ import { ButtonGroup } from './ui/button-group';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Search } from 'lucide-react';
-import { nameToSlug } from '../lib/utils';
 
 function SunIcon({ className = '' }) {
   return (
@@ -128,28 +127,27 @@ export function Header() {
     }
     const match = establishments.find((e) => e.name.toLowerCase() === q.toLowerCase());
     if (match) {
-      const sluggedEstablishmentName = nameToSlug(match.name);
-      navigate(`/restaurants?e=${sluggedEstablishmentName}`);
+      navigate(`/restaurants?e=${match.establishment_id}`);
       setSearchQuery('');
       return;
     }
     if (searchMatches.length === 1) {
-      const sluggedEstablishmentName = nameToSlug(searchMatches[0].name);
-      navigate(`/restaurants?e=${sluggedEstablishmentName}`);
+      navigate(`/restaurants?e=${searchMatches[0].establishment_id}`);
       setSearchQuery('');
       return;
     }
     navigate(`/restaurants?q=${encodeURIComponent(q)}`);
   };
 
-  const handleSearchResultSelect = (establishmentName) => {
-    const sluggedEstablishmentName = nameToSlug(establishmentName);
+  const handleSearchResultSelect = (establishmentId) => {
     setSearchQuery('');
     setSearchDropdownOpen(false);
-    navigate(`/restaurants?e=${sluggedEstablishmentName}`);
+    navigate(`/restaurants?e=${establishmentId}`);
   };
 
   const showSearchDropdown = searchDropdownOpen && searchTrimmed.length > 0;
+  const trueGritEstablishmentId = establishments.find((e) => /true\s*grit/i.test(e.name))
+    ?.establishment_id;
 
   const handleSignOut = async () => {
     setProfileOpen(false);
@@ -262,7 +260,7 @@ export function Header() {
                         className={`block w-full px-4 py-2.5 text-left font-body text-sm font-medium transition-colors ${
                           isDark ? 'text-white/90 hover:bg-white/10' : 'text-black hover:bg-black/5'
                         }`}
-                        onClick={() => handleSearchResultSelect(e.name)}
+                        onClick={() => handleSearchResultSelect(e.establishment_id)}
                       >
                         {e.name}
                       </button>
@@ -301,7 +299,7 @@ export function Header() {
                     {establishments.map((e) => (
                       <Link
                         key={e.establishment_id}
-                        to={`/restaurants?e=${nameToSlug(e.name)}`}
+                        to={`/restaurants?e=${e.establishment_id}`}
                         className={restaurantsItemCls}
                         role="menuitem"
                       >
@@ -313,7 +311,14 @@ export function Header() {
               </div>
             )}
           </div>
-          <Link to="/restaurants/true-grits/writeareview" className={linkCls}>
+          <Link
+            to={
+              trueGritEstablishmentId
+                ? `/restaurants/${trueGritEstablishmentId}/writeareview`
+                : '/restaurants'
+            }
+            className={linkCls}
+          >
             Write a Review
           </Link>
           <Link to="/map" className={linkCls}>Map</Link>
