@@ -18,7 +18,7 @@ export function RestaurantsPage() {
       try {
         setLoading(true);
         const { data, error } = await supabase
-          .from('establishments')
+          .from('establishments_with_ratings')
           .select(`*`)
           .eq('is_active', true)
           .order('name', { ascending: true });
@@ -80,14 +80,25 @@ export function RestaurantsPage() {
                       <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-6">
                         <div className="space-y-3">
                           <div className="flex items-center gap-2 bg-black/40 backdrop-blur-md w-fit px-3 py-1 rounded-full border border-white/10">
-                            <div className="flex items-center text-[#ffbf3e]">
-                              {[...Array(4)].map((_, i) => (
-                                <Star key={i} className="w-3.5 h-3.5 fill-current" />
-                              ))}
-                              <StarHalf className="w-3.5 h-3.5 fill-current" />
+                           <div className="flex items-center text-[#ffbf3e]">
+                              {[...Array(5)].map((_, i) => {
+                                const starNumber = i + 1;
+                                const rating = restaurant.average_rating || 0;
+
+                                if (rating >= starNumber) {
+                                  // Full Star: Rating is higher than or equal to current star (e.g., 4.2 >= 4)
+                                  return <Star key={i} className="w-3.5 h-3.5 fill-current" />;
+                                } else if (rating > starNumber - 1 && rating < starNumber) {
+                                  // Half Star: Rating is between two integers (e.g., 4.2 is > 4 and < 5)
+                                  return <StarHalf key={i} className="w-3.5 h-3.5 fill-current" />;
+                                } else {
+                                  // Empty Star: Rating is lower than this star level
+                                  return <Star key={i} className="w-3.5 h-3.5" />; 
+                                }
+                              })}
                             </div>
                             <span className="text-xs font-bold text-white">
-                              {restaurant.rating} ({restaurant.reviews} reviews)
+                              {Number(restaurant.average_rating || 0).toFixed(1)}   ({restaurant.total_reviews || 0} reviews)
                             </span>
                           </div>
 
@@ -103,7 +114,7 @@ export function RestaurantsPage() {
                             <div className="flex items-center gap-2">
                               <MapPin className="w-4 h-4 text-[#ffbf3e]" />
                               <span className="text-sm line-clamp-1">
-                                {restaurant.building_name == null ? restaurant.address : restaurant.building_name}
+                                {restaurant.address ||restaurant.building_name}
                               </span>
                             </div>
                           </div>
