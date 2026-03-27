@@ -322,42 +322,18 @@ export function EstablishmentPage() {
             <h1 className="font-display text-4xl font-black tracking-tight text-white drop-shadow-sm sm:text-5xl md:text-7xl">
               {establishment.name}
             </h1>
-<<<<<<< HEAD
-
             <div className="flex flex-wrap gap-3 text-white">
               <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/45 px-4 py-2 backdrop-blur-md">
                 <Star className="h-5 w-5 fill-[#ffbf3e] text-[#ffbf3e]" />
-                <span className="text-lg font-bold">{establishment.rating}</span>
-                <span className="text-sm opacity-80">({establishment.reviews} reviews)</span>
+                <span className="text-lg font-bold">
+                  {Number(establishment.average_rating ?? establishment.rating ?? 0).toFixed(1)}
+                </span>
+                <span className="text-sm opacity-80">
+                  ({establishment.reviews ?? 0} reviews)
+                </span>
               </div>
               <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/45 px-4 py-2 backdrop-blur-md">
                 <MapPin className="h-5 w-5 text-[#ffbf3e]" />
-=======
-            
-            <div className="flex flex-wrap gap-4 text-white">
-              <div className="flex items-center text-[#ffbf3e]">
-                              {[...Array(5)].map((_, i) => {
-                                const starNumber = i + 1;
-                                const rating = establishment.average_rating || 0;
-
-                                if (rating >= starNumber) {
-                                  // Full Star: Rating is higher than or equal to current star (e.g., 4.2 >= 4)
-                                  return <Star key={i} className="w-3.5 h-3.5 fill-current" />;
-                                } else if (rating > starNumber - 1 && rating < starNumber) {
-                                  // Half Star: Rating is between two integers (e.g., 4.2 is > 4 and < 5)
-                                  return <StarHalf key={i} className="w-3.5 h-3.5 fill-current" />;
-                                } else {
-                                  // Empty Star: Rating is lower than this star level
-                                  return <Star key={i} className="w-3.5 h-3.5" />; 
-                                }
-                              })}
-                                <span className="text-xs font-bold text-white">
-                              {Number(establishment.average_rating || 0).toFixed(1)}
-                            </span>
-                            </div>
-              <div className="flex items-center gap-2 bg-black/40 backdrop-blur-md px-4 py-2 rounded-xl border border-white/10">
-                <MapPin className="w-5 h-5 text-[#ffbf3e]" />
->>>>>>> fac707bbd2b581d661cfe31df6baf60c016457cd
                 <span className="font-medium">{establishment.building_name || establishment.address}</span>
               </div>
             </div>
