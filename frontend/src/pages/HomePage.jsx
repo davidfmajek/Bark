@@ -4,7 +4,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { PictureCarousel } from '../components/PictureCarousel';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
-import { getRestaurantCarouselSlides } from '../lib/restaurantImages';
+import { fetchCarouselSlidesFromStorage } from '../lib/restaurantImages';
 
 function Stars({ rating, dark }) {
   const safeRating = Number.isFinite(rating) ? rating : 0;
@@ -43,7 +43,8 @@ export function HomePage() {
   const dark = theme === 'dark';
   const { isAuthenticated } = useAuth();
   const [trueGritEstablishmentId, setTrueGritEstablishmentId] = useState(null);
-  const restaurantSlides = getRestaurantCarouselSlides();
+  const [establishments, setEstablishments] = useState([]);
+  const [carouselSlides, setCarouselSlides] = useState([]);
 
   useEffect(() => {
     let mounted = true;
@@ -52,26 +53,49 @@ export function HomePage() {
         .from('establishments')
         .select('establishment_id, name')
         .eq('is_active', true);
-      const trueGrit = (data ?? []).find((e) => /true\s*grit/i.test(e.name));
-      if (mounted && trueGrit) setTrueGritEstablishmentId(trueGrit.establishment_id);
+      const activeEstablishments = data ?? [];
+      const trueGrit = activeEstablishments.find((e) => /true\s*grit/i.test(e.name));
+      if (mounted) {
+        setEstablishments(activeEstablishments);
+        if (trueGrit) setTrueGritEstablishmentId(trueGrit.establishment_id);
+      }
     })();
     return () => { mounted = false; };
   }, []);
 
+  useEffect(() => {
+    if (!establishments.length) {
+      setCarouselSlides([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const slides = await fetchCarouselSlidesFromStorage(supabase, establishments);
+      if (!cancelled) setCarouselSlides(slides);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [establishments]);
+
   return (
     <div className={`relative min-h-screen ${dark ? 'text-white' : 'text-black'}`}>
       <div className="pointer-events-none absolute inset-0 -z-10 min-h-screen">
-        <PictureCarousel
-          dark={dark}
-          rounded={false}
-          pauseOnHover={false}
-          showDots={false}
-          intervalMs={5200}
-          className="h-full w-full"
-          overlayClassName={dark ? 'bg-[#0f1219]/60' : 'bg-white/60'}
-          imageClassName="h-full w-full object-cover blur-[6px] transform-gpu scale-110"
-          slides={restaurantSlides}
-        />
+        {carouselSlides.length > 0 ? (
+          <PictureCarousel
+            dark={dark}
+            rounded={false}
+            pauseOnHover={false}
+            showDots={false}
+            intervalMs={5200}
+            className="h-full w-full"
+            overlayClassName={dark ? 'bg-[#0f1219]/60' : 'bg-white/60'}
+            imageClassName="h-full w-full object-cover blur-[6px] transform-gpu scale-110"
+            slides={carouselSlides}
+          />
+        ) : (
+          <div className={`h-full min-h-screen w-full ${dark ? 'bg-[#0f1219]' : 'bg-gray-100'}`} />
+        )}
       </div>
 
       <div className="relative z-10">
@@ -139,14 +163,30 @@ export function HomePage() {
               </div>
 
               <div className="hidden w-full max-w-md sm:block">
-                <PictureCarousel
-                  dark={dark}
-                  className="aspect-[4/3] opacity-95"
-                  overlayClassName={dark ? 'bg-black/25' : 'bg-black/10'}
-                  intervalMs={4200}
-                  imageClassName="h-full w-full object-cover"
-                  slides={restaurantSlides}
-                />
+                {carouselSlides.length > 0 ? (
+                  <PictureCarousel
+                    dark={dark}
+                    className="aspect-[4/3] opacity-95"
+                    overlayClassName={dark ? 'bg-black/25' : 'bg-black/10'}
+                    intervalMs={4200}
+                    showDots={false}
+                    imageClassName="h-full w-full object-cover"
+                    slides={carouselSlides}
+                  />
+                ) : (
+                  <div
+                    className={`flex aspect-[4/3] w-full items-center justify-center rounded-2xl border ${
+                      dark ? 'border-white/10 bg-white/5' : 'border-black/10 bg-black/5'
+                    }`}
+                  >
+                    <div
+                      className={`h-10 w-10 animate-spin rounded-full border-2 border-transparent ${
+                        dark ? 'border-t-[#f5bf3e] border-r-[#f5bf3e]/40' : 'border-t-[#D4A017] border-r-[#D4A017]/40'
+                      }`}
+                      aria-label="Loading"
+                    />
+                  </div>
+                )}
               </div>
             </div>
 

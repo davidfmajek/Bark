@@ -60,6 +60,14 @@ function AppRoutes() {
             </RequireAuth>
           )}
         />
+        <Route
+          path="/writeareview"
+          element={(
+            <RequireAuth>
+              <WriteAReviewPage />
+            </RequireAuth>
+          )}
+        />
         <Route path="/restaurants/:slug/writeareview" element={<WriteAReviewPage />} />
         <Route path="/restaurants/:slug" element={<EstablishmentPage />} />
         <Route path="/map" element={<MapPage />} />

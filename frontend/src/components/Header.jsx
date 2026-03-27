@@ -146,8 +146,6 @@ export function Header() {
   };
 
   const showSearchDropdown = searchDropdownOpen && searchTrimmed.length > 0;
-  const trueGritEstablishmentId = establishments.find((e) => /true\s*grit/i.test(e.name))
-    ?.establishment_id;
 
   const handleSignOut = async () => {
     setProfileOpen(false);
@@ -312,11 +310,7 @@ export function Header() {
             )}
           </div>
           <Link
-            to={
-              trueGritEstablishmentId
-                ? `/restaurants/${trueGritEstablishmentId}/writeareview`
-                : '/restaurants'
-            }
+            to="/writeareview"
             className={linkCls}
           >
             Write a Review
