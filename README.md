@@ -1,40 +1,30 @@
-# BARK!
+# BARK
 
-This is currently a minimal starter for the project with:
+BARK is a campus food review app with a React frontend, Supabase authentication, and a lightweight Flask API.
 
-- a styled login / signup page
-- Supabase email/password authentication
-- automatic redirect to a protected `/main` page after sign-in
-- a simple placeholder main page with a sign-out button
-- a minimal Flask backend placeholder
-
-The rest of the app is not built yet I and the team are still working on it.
-
-## Current scope
+## Current status
 
 Implemented:
 
-- React + Vite frontend
-- Tailwind styling
-- Supabase auth integration
-- login page
-- protected placeholder page at `/main`
-- sign-out flow
+- React + Vite frontend with routing and shared layout
+- Supabase email/password auth (sign in and sign up)
+- protected routes using auth context
+- pages for home, restaurants, map, profile, and reviews flow
+- Flask backend placeholder with health endpoint
+- SQL scripts for core Supabase SQL schema and auth user sync trigger
 
-Not implemented:
+Still in progress:
 
-- browse page
-- profile page
-- reviews
-- analytics
-- admin tools
-- database schema and application-specific backend APIs
+- full backend APIs
+- complete data fetching/writes across all pages
+- admin and moderation workflows
+- production hardening, tests, and deployment setup
 
 ## Tech stack
 
-- Frontend: React, Vite, Tailwind CSS
-- Auth: Supabase Auth
+- Frontend: React 19, Vite 7, React Router 7, Tailwind CSS 4
 - Backend: Flask
+- Auth + DB: Supabase (Auth + Postgres)
 
 ## Project structure
 
@@ -45,15 +35,17 @@ Bark/
 │   └── requirements.txt
 ├── frontend/
 │   ├── src/
+│   │   ├── components/
 │   │   ├── contexts/
 │   │   ├── lib/
 │   │   ├── pages/
 │   │   ├── App.jsx
-│   │   ├── index.css
 │   │   └── main.jsx
-│   ├── package.json
-│   └── vite.config.js
-├── .env.example
+│   └── package.json
+├── supabase/
+│   ├── schema.sql
+│   └── auth_sync_trigger.sql
+├── .env (shared in #backend-database channel on discord)
 └── README.md
 ```
 
@@ -61,91 +53,72 @@ Bark/
 
 - Node.js 18+
 - Python 3.10+
-- access to the shared Supabase project credentials
+- access to the Supabase project 
 
-## 1. Install dependencies
+## Setup
 
-### Frontend
+### 1) Install dependencies
+
+Frontend:
 
 ```bash
 cd frontend
 npm install
 ```
 
-### Backend
+Backend:
 
 ```bash
 cd backend
 python -m pip install -r requirements.txt
 ```
 
-## 2. Create `.env`
+### 2) Configure environment variables
 
-Copy the `.env` i will shared into the `.env` you will create in the project root.
+Create a `.env` file at the repository root with:
 
-Required frontend values:
+```bash
+# Backend (Flask)
+SUPABASE_URL=
+SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+SUPABASE_JWT_SECRET=
+FLASK_SECRET_KEY=
+CORS_ORIGINS=http://localhost:5173
 
-- `VITE_SUPABASE_URL`
-- `VITE_SUPABASE_ANON_KEY`
+# Frontend (Vite)
+VITE_SUPABASE_URL=
+VITE_SUPABASE_ANON_KEY=
+VITE_API_URL=http://localhost:5000/api
+```
 
-Required backend values:
+This creates the app tables and a trigger that syncs new `auth.users` records into `public.users`.
 
-- `SUPABASE_URL`
-- `SUPABASE_ANON_KEY`
-- `SUPABASE_SERVICE_ROLE_KEY`
-- `SUPABASE_JWT_SECRET`
-- `FLASK_SECRET_KEY`
+## Run the app
 
-## 3. Supabase
+Use two terminals.
 
-You do **not** need to create your own Supabase project.
-
-Use the shared values **I** provided:
-
-1. Put the shared project URL in `VITE_SUPABASE_URL`
-2. Put the shared anon/public key in `VITE_SUPABASE_ANON_KEY`
-3. Keep `CORS_ORIGINS` as `http://localhost:5173` unless your frontend runs on a different port
-
-
-## 4. Run the app
-
-Open two terminals.
-
-### Terminal 1: backend
+Backend:
 
 ```bash
 cd backend
 python app.py
 ```
 
-Backend:
+- API base: `http://localhost:5000`
+- health: `http://localhost:5000/api/health`
 
-- `http://localhost:5000`
-- health check: `http://localhost:5000/api/health`
-
-### Terminal 2: frontend
+Frontend:
 
 ```bash
 cd frontend
 npm run dev
 ```
 
-Frontend:
+- app: `http://localhost:5173`
 
-- `http://localhost:5173`
+## Frontend routes
 
-## Authentication behavior
-
-- Users can sign up with email and password
-- Users can log in with email and password
-- After successful login, users are redirected to `/main`
-- `/main` is only a placeholder page right now
-- The placeholder page includes a sign-out button so you can return to the login screen
-
-## Notes for contributors
-
-- This repo is intentionally minimal right now
-- Build new features from this base
-- Before pushing any changes make sure everyone on the team is aware
-- LETS GET BUILDING!!!!
+- public: `/`, `/signin`, `/restaurants`, `/restaurants/:slug`, `/map`
+- auth required: `/main`, `/profile`, `/my-reviews`, `/writeareview`, `/restaurants/:slug/writeareview`
 
