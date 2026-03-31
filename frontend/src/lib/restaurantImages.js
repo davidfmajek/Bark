@@ -1,6 +1,9 @@
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const STORAGE_BUCKET = import.meta.env.VITE_SUPABASE_STORAGE_BUCKET || 'Resturant-logos';
 const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'webp'];
+const HEROES_FOLDER = 'heroes';
+const LOGOS_FOLDER = 'logos';
+const IMAGES_FOLDER = 'images';
 
 const supabasePublicStorageBase = STORAGE_BUCKET && SUPABASE_URL
   ? `${SUPABASE_URL}/storage/v1/object/public/${STORAGE_BUCKET}`
@@ -15,23 +18,88 @@ function toImageSrc(objectPath) {
   return `${supabasePublicStorageBase}/${encodeObjectPath(objectPath)}`;
 }
 
+function isAbsoluteHttpUrl(value) {
+  return /^https?:\/\//i.test(String(value ?? '').trim());
+}
+
+function getPathOrUrlCandidateUrls(supabase, candidate) {
+  const value = String(candidate ?? '').trim();
+  if (!value) return [];
+  if (isAbsoluteHttpUrl(value)) return [value];
+
+  const urls = [];
+  if (supabase && STORAGE_BUCKET) {
+    const { data } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(value);
+    if (data?.publicUrl) urls.push(data.publicUrl);
+  }
+  const direct = toImageSrc(value);
+  if (direct && !urls.includes(direct)) urls.push(direct);
+  return urls;
+}
+
+function getConventionalCandidatePathsById(id) {
+  const paths = [];
+  for (const ext of IMAGE_EXTENSIONS) {
+    const fileName = `${id}.${ext}`;
+    paths.push(`${HEROES_FOLDER}/${fileName}`);
+    paths.push(`${LOGOS_FOLDER}/${fileName}`);
+    paths.push(`${IMAGES_FOLDER}/${HEROES_FOLDER}/${fileName}`);
+    paths.push(`${IMAGES_FOLDER}/${LOGOS_FOLDER}/${fileName}`);
+    paths.push(`${HEROES_FOLDER}/${IMAGES_FOLDER}/${fileName}`);
+    paths.push(`${LOGOS_FOLDER}/${IMAGES_FOLDER}/${fileName}`);
+    // Legacy fallback for prior root-level naming.
+    paths.push(fileName);
+  }
+  return [...new Set(paths)];
+}
+
 export function getRestaurantImageCandidates(restaurant) {
   const candidates = [];
   const id = String(restaurant?.establishment_id ?? '').trim();
+  const explicitPaths = [restaurant?.header_image_path, restaurant?.logo_path, restaurant?.header_image];
 
-  if (id) {
-    // Match uploaded naming in Supabase Storage bucket root:
-    // <establishment_id>_1.(ext) => logo
-    // <establishment_id>_2.(ext) => establishment image
-    for (const ext of IMAGE_EXTENSIONS) {
-      candidates.push(`${id}_2.${ext}`);
-      candidates.push(`${id}_1.${ext}`);
-      // Backward compatibility if a plain "<id>.<ext>" object exists.
-      candidates.push(`${id}.${ext}`);
+  for (const path of explicitPaths) {
+    if (path && typeof path === 'string') {
+      candidates.push(path.trim());
     }
   }
 
-  return [...new Set(candidates)].map(toImageSrc);
+  if (id) {
+    // Current convention prefers folder paths over root-level files.
+    candidates.push(...getConventionalCandidatePathsById(id));
+  }
+
+  const deduped = [...new Set(candidates)];
+  return deduped.flatMap((candidate) => getPathOrUrlCandidateUrls(null, candidate));
+}
+
+export function getRestaurantCardImageCandidates(restaurant) {
+  const candidates = [];
+  const id = String(restaurant?.establishment_id ?? '').trim();
+  const explicitPaths = [restaurant?.logo_path, restaurant?.header_image_path, restaurant?.header_image];
+
+  for (const path of explicitPaths) {
+    if (path && typeof path === 'string') {
+      candidates.push(path.trim());
+    }
+  }
+
+  if (id) {
+    for (const ext of IMAGE_EXTENSIONS) {
+      const fileName = `${id}.${ext}`;
+      // Cards should prioritize logo over hero.
+      candidates.push(`${LOGOS_FOLDER}/${fileName}`);
+      candidates.push(`${HEROES_FOLDER}/${fileName}`);
+      candidates.push(`${IMAGES_FOLDER}/${LOGOS_FOLDER}/${fileName}`);
+      candidates.push(`${IMAGES_FOLDER}/${HEROES_FOLDER}/${fileName}`);
+      candidates.push(`${LOGOS_FOLDER}/${IMAGES_FOLDER}/${fileName}`);
+      candidates.push(`${HEROES_FOLDER}/${IMAGES_FOLDER}/${fileName}`);
+      candidates.push(fileName);
+    }
+  }
+
+  const deduped = [...new Set(candidates)];
+  return deduped.flatMap((candidate) => getPathOrUrlCandidateUrls(null, candidate));
 }
 
 /**
@@ -50,34 +118,28 @@ export function getRestaurantCarouselSlides(restaurants = []) {
   });
 }
 
-function escapeRegex(s) {
-  return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-/** Prefer `_2` (venue photo), then `_1`, then other numbered, then plain `id.ext`. */
-function sortFileNamesForCarouselPrimary(names, establishmentId) {
-  const id = String(establishmentId ?? '').trim();
-  const idLower = id.toLowerCase();
-  return [...names].sort((a, b) => {
-    const oa = carouselFileOrder(a, idLower);
-    const ob = carouselFileOrder(b, idLower);
-    if (oa !== ob) return oa - ob;
-    return a.localeCompare(b);
+async function listImagePathsInFolder(supabase, bucket, folder) {
+  const imageRe = /\.(png|jpg|jpeg|webp)$/i;
+  const { data, error } = await supabase.storage.from(bucket).list(folder, {
+    limit: 1000,
+    offset: 0,
+    sortBy: { column: 'name', order: 'asc' },
   });
+  if (error || !Array.isArray(data)) return [];
+  return data
+    .filter((f) => f?.name && imageRe.test(f.name))
+    .map((f) => `${folder}/${f.name}`);
 }
 
-function carouselFileOrder(name, idLower) {
-  const nl = name.toLowerCase();
-  if (!nl.startsWith(idLower)) return 9999;
-  const m = name.match(new RegExp(`^${escapeRegex(idLower)}_(\\d+)\\.`, 'i'));
-  if (m) {
-    const n = parseInt(m[1], 10);
-    if (n === 2) return 0;
-    if (n === 1) return 1;
-    return 10 + n;
+function getConventionalStoragePath(establishmentId, heroesSet, logosSet) {
+  const id = String(establishmentId ?? '').trim();
+  if (!id) return null;
+  for (const p of getConventionalCandidatePathsById(id)) {
+    // list(folder) returns names relative to that folder, so only these two sets are reliable.
+    if (p.startsWith(`${HEROES_FOLDER}/`) && heroesSet.has(p)) return p;
+    if (p.startsWith(`${LOGOS_FOLDER}/`) && logosSet.has(p)) return p;
   }
-  if (new RegExp(`^${escapeRegex(idLower)}\\.[^.]+$`, 'i').test(name)) return 200;
-  return 500;
+  return null;
 }
 
 function probePublicImageUrl(url) {
@@ -112,14 +174,13 @@ export async function fetchCarouselSlidesFromStorage(supabase, establishments) {
     return fetchCarouselSlidesByProbing(establishments);
   }
 
-  const imageRe = /\.(png|jpg|jpeg|webp)$/i;
-  const { data: files, error } = await supabase.storage.from(bucket).list('', {
-    limit: 1000,
-    offset: 0,
-    sortBy: { column: 'name', order: 'asc' },
-  });
-
-  if (error || !Array.isArray(files) || files.length === 0) {
+  const [heroPaths, logoPaths] = await Promise.all([
+    listImagePathsInFolder(supabase, bucket, HEROES_FOLDER),
+    listImagePathsInFolder(supabase, bucket, LOGOS_FOLDER),
+  ]);
+  const heroesSet = new Set(heroPaths);
+  const logosSet = new Set(logoPaths);
+  if (heroesSet.size === 0 && logosSet.size === 0) {
     return fetchCarouselSlidesByProbing(establishments);
   }
 
@@ -129,21 +190,23 @@ export async function fetchCarouselSlidesFromStorage(supabase, establishments) {
     const id = String(e?.establishment_id ?? '').trim();
     if (!id) continue;
 
-    const matched = files.filter(
-      (f) =>
-        f.name &&
-        !f.name.includes('/') &&
-        imageRe.test(f.name) &&
-        f.name.toLowerCase().startsWith(id.toLowerCase()),
-    );
-    if (matched.length === 0) continue;
+    const explicitUrls = [
+      ...getPathOrUrlCandidateUrls(supabase, e?.header_image_path),
+      ...getPathOrUrlCandidateUrls(supabase, e?.logo_path),
+      ...getPathOrUrlCandidateUrls(supabase, e?.header_image),
+    ];
+    if (explicitUrls.length > 0) {
+      slides.push({
+        key: id,
+        imageSrc: explicitUrls[0],
+        alt: e.name ? `${e.name}` : 'Restaurant photo',
+      });
+      continue;
+    }
 
-    const sortedNames = sortFileNamesForCarouselPrimary(
-      matched.map((f) => f.name),
-      id,
-    );
-    const fileName = sortedNames[0];
-    const { data: pub } = supabase.storage.from(bucket).getPublicUrl(fileName);
+    const conventionalPath = getConventionalStoragePath(id, heroesSet, logosSet);
+    if (!conventionalPath) continue;
+    const { data: pub } = supabase.storage.from(bucket).getPublicUrl(conventionalPath);
     const url = pub?.publicUrl;
     if (!url) continue;
 
@@ -177,26 +240,20 @@ async function fetchCarouselSlidesByProbing(establishments) {
   return slides;
 }
 
-/** Max photos per establishment detail page (carousel has a start and end, not infinite). */
-export const MAX_ESTABLISHMENT_GALLERY_IMAGES = 9;
+/** Max photos per establishment detail page (collage + modal). */
+export const MAX_ESTABLISHMENT_GALLERY_IMAGES = 50;
 
 /** Distinct storage paths for establishment detail collage (hero + extras). */
 function getEstablishmentStorageGalleryPaths(restaurant) {
   const id = String(restaurant?.establishment_id ?? '').trim();
   if (!id) return [];
 
-  const paths = [];
-  for (const ext of IMAGE_EXTENSIONS) {
-    for (const suffix of ['_8', '_7', '_6', '_5', '_4', '_3', '_2', '_1', '']) {
-      paths.push(suffix ? `${id}${suffix}.${ext}` : `${id}.${ext}`);
-    }
-  }
-  return [...new Set(paths)];
+  return getConventionalCandidatePathsById(id);
 }
 
 /**
  * Ordered candidate URLs (not verified). Used as probe order when storage listing fails.
- * Includes header_image when set, then Supabase public paths for _8…_1 and plain id.
+ * Includes explicit header image path when set, then conventional folder-based paths.
  * Capped at {@link MAX_ESTABLISHMENT_GALLERY_IMAGES}.
  */
 export function getEstablishmentGalleryUrls(establishment) {
@@ -204,6 +261,18 @@ export function getEstablishmentGalleryUrls(establishment) {
   const push = (u) => {
     if (u && typeof u === 'string' && !urls.includes(u)) urls.push(u);
   };
+
+  const explicitLogoCandidates = getPathOrUrlCandidateUrls(
+    null,
+    establishment?.logo_path,
+  );
+  for (const url of explicitLogoCandidates) push(url);
+
+  const explicitPathCandidates = getPathOrUrlCandidateUrls(
+    null,
+    establishment?.header_image_path,
+  );
+  for (const url of explicitPathCandidates) push(url);
 
   push(establishment?.header_image);
 
@@ -214,25 +283,24 @@ export function getEstablishmentGalleryUrls(establishment) {
   return urls.slice(0, MAX_ESTABLISHMENT_GALLERY_IMAGES);
 }
 
-/** Sort storage filenames for full gallery: `_1`, `_2`, … then plain `id.ext`. */
-export function sortEstablishmentFileNamesForGallery(names, establishmentId) {
-  const id = String(establishmentId ?? '').trim();
-  const idLower = id.toLowerCase();
-  return [...names].sort((a, b) => {
-    const oa = galleryFileOrder(a, idLower);
-    const ob = galleryFileOrder(b, idLower);
-    if (oa !== ob) return oa - ob;
-    return a.localeCompare(b);
-  });
-}
+async function fetchReviewImageUrlsForEstablishment(supabase, establishmentId) {
+  if (!supabase || !establishmentId) return [];
+  const { data, error } = await supabase
+    .from('review_images')
+    .select('storage_url, display_order, reviews!inner(establishment_id)')
+    .eq('reviews.establishment_id', establishmentId)
+    .order('display_order', { ascending: true });
 
-function galleryFileOrder(name, idLower) {
-  const nl = name.toLowerCase();
-  if (!nl.startsWith(idLower)) return 9999;
-  const m = name.match(new RegExp(`^${escapeRegex(idLower)}_(\\d+)\\.`, 'i'));
-  if (m) return parseInt(m[1], 10);
-  if (new RegExp(`^${escapeRegex(idLower)}\\.[^.]+$`, 'i').test(name)) return 10000;
-  return 500;
+  if (error || !Array.isArray(data) || data.length === 0) return [];
+
+  const urls = [];
+  for (const row of data) {
+    const candidates = getPathOrUrlCandidateUrls(supabase, row?.storage_url);
+    for (const url of candidates) {
+      if (!urls.includes(url)) urls.push(url);
+    }
+  }
+  return urls;
 }
 
 /**
@@ -245,41 +313,44 @@ export async function fetchEstablishmentGalleryUrls(supabase, establishment) {
   const max = MAX_ESTABLISHMENT_GALLERY_IMAGES;
 
   if (!establishment || !supabase || !bucket || !id) {
+    const explicit = getPathOrUrlCandidateUrls(supabase, establishment?.header_image_path);
+    if (explicit.length > 0 && (await probePublicImageUrl(explicit[0]))) {
+      return [explicit[0]].slice(0, max);
+    }
     const hi = establishment?.header_image;
     if (hi && (await probePublicImageUrl(hi))) return [hi].slice(0, max);
     return [];
   }
 
-  const imageRe = /\.(png|jpg|jpeg|webp)$/i;
-  const { data: files, error } = await supabase.storage.from(bucket).list('', {
-    limit: 1000,
-    offset: 0,
-    sortBy: { column: 'name', order: 'asc' },
-  });
+  const [heroPaths, logoPaths] = await Promise.all([
+    listImagePathsInFolder(supabase, bucket, HEROES_FOLDER),
+    listImagePathsInFolder(supabase, bucket, LOGOS_FOLDER),
+  ]);
+  const heroesSet = new Set(heroPaths);
+  const logosSet = new Set(logoPaths);
 
   let urls = [];
 
-  if (!error && Array.isArray(files) && files.length > 0) {
-    const idLower = id.toLowerCase();
-    const matched = files.filter(
-      (f) =>
-        f.name &&
-        !f.name.includes('/') &&
-        imageRe.test(f.name) &&
-        f.name.toLowerCase().startsWith(idLower),
-    );
-    if (matched.length > 0) {
-      const sortedNames = sortEstablishmentFileNamesForGallery(
-        matched.map((f) => f.name),
-        id,
-      );
-      for (const name of sortedNames) {
-        if (urls.length >= max) break;
-        const { data: pub } = supabase.storage.from(bucket).getPublicUrl(name);
-        const url = pub?.publicUrl;
-        if (url && !urls.includes(url)) urls.push(url);
-      }
-    }
+  const explicitLogo = getPathOrUrlCandidateUrls(supabase, establishment?.logo_path);
+  if (explicitLogo.length > 0) {
+    urls.push(explicitLogo[0]);
+  }
+
+  const explicit = getPathOrUrlCandidateUrls(supabase, establishment?.header_image_path);
+  if (explicit.length > 0) {
+    urls.push(explicit[0]);
+  }
+
+  // Include both conventional hero/logo assets for this establishment if present.
+  for (const p of getConventionalCandidatePathsById(id)) {
+    if (urls.length >= max) break;
+    const isHeroPath = p.startsWith(`${HEROES_FOLDER}/`);
+    const isLogoPath = p.startsWith(`${LOGOS_FOLDER}/`);
+    const exists = (isHeroPath && heroesSet.has(p)) || (isLogoPath && logosSet.has(p));
+    if (!exists) continue;
+    const { data: pub } = supabase.storage.from(bucket).getPublicUrl(p);
+    const url = pub?.publicUrl;
+    if (url && !urls.includes(url)) urls.push(url);
   }
 
   const hi = establishment.header_image;
@@ -287,6 +358,16 @@ export async function fetchEstablishmentGalleryUrls(supabase, establishment) {
     const already = urls.includes(hi);
     if (!already && (await probePublicImageUrl(hi))) {
       urls = [hi, ...urls].filter((u, i, a) => a.indexOf(u) === i).slice(0, max);
+    }
+  }
+
+  // Append all review images for this establishment.
+  if (urls.length < max) {
+    const reviewImageUrls = await fetchReviewImageUrlsForEstablishment(supabase, id);
+    for (const reviewUrl of reviewImageUrls) {
+      if (urls.length >= max) break;
+      if (!reviewUrl || urls.includes(reviewUrl)) continue;
+      urls.push(reviewUrl);
     }
   }
 

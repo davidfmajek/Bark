@@ -51,7 +51,7 @@ export function HomePage() {
     (async () => {
       const { data } = await supabase
         .from('establishments')
-        .select('establishment_id, name')
+        .select('*')
         .eq('is_active', true);
       const activeEstablishments = data ?? [];
       const trueGrit = activeEstablishments.find((e) => /true\s*grit/i.test(e.name));

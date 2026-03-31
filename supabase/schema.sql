@@ -2,7 +2,7 @@
 
 -- Enums
 CREATE TYPE affiliation_enum AS ENUM (
-  'Student', 'Professor', 'Incoming_Student', 'Other'
+  'Student', 'Professor', 'Incoming_Student', 'Staff', 'Other'
 );
 
 CREATE TYPE category_enum AS ENUM (
@@ -33,6 +33,8 @@ CREATE TABLE establishments (
   establishment_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name            VARCHAR(255) NOT NULL,
   description     TEXT,
+  logo_path       VARCHAR(512),
+  header_image_path VARCHAR(512),
   category        category_enum NOT NULL,
   building_name   VARCHAR(255),
   latitude        DECIMAL(10, 7) NOT NULL,
@@ -58,6 +60,7 @@ CREATE TABLE reviews (
   establishment_id UUID NOT NULL REFERENCES establishments (establishment_id) ON DELETE CASCADE,
   rating          INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
   body            TEXT,
+  helpful_count   INTEGER NOT NULL DEFAULT 0,
   is_flagged      BOOLEAN NOT NULL DEFAULT FALSE,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -101,13 +104,13 @@ CREATE TABLE reports (
 );
 
 -- Indexes for common lookups
-CREATE INDEX idx_reviews_establishment ON reviews (establishment_id);
-CREATE INDEX idx_reviews_user ON reviews (user_id);
-CREATE INDEX idx_review_images_review ON review_images (review_id);
-CREATE INDEX idx_review_tags_review ON review_tags (review_id);
-CREATE INDEX idx_helpful_votes_review ON helpful_votes (review_id);
-CREATE INDEX idx_reports_review ON reports (review_id);
-CREATE INDEX idx_hours_establishment ON hours (establishment_id);
+-- CREATE INDEX idx_reviews_establishment ON reviews (establishment_id);
+-- CREATE INDEX idx_reviews_user ON reviews (user_id);
+-- CREATE INDEX idx_review_images_review ON review_images (review_id);
+-- CREATE INDEX idx_review_tags_review ON review_tags (review_id);
+-- CREATE INDEX idx_helpful_votes_review ON helpful_votes (review_id);
+-- CREATE INDEX idx_reports_review ON reports (review_id);
+-- CREATE INDEX idx_hours_establishment ON hours (establishment_id);
 
 -- Optional: drop all (run if reset is needed)
 -- DROP TABLE IF EXISTS reports, helpful_votes, review_tags, review_images, reviews, hours, establishments, users;

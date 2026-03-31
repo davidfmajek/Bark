@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase.js';
 import { Clock, MapPin, ArrowRight, Star, StarHalf, Loader2, FilePenLine } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from "../contexts/AuthContext"; // 1. Added Auth Context
-import { getRestaurantImageCandidates } from '../lib/restaurantImages';
+import { getRestaurantCardImageCandidates } from '../lib/restaurantImages';
 
 export function RestaurantsPage() {
   const { theme } = useTheme();
@@ -68,7 +68,7 @@ export function RestaurantsPage() {
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
             {restaurantsToShow.map((restaurant) => {
-              const imageCandidates = getRestaurantImageCandidates(restaurant);
+              const imageCandidates = getRestaurantCardImageCandidates(restaurant);
               const imageCandidateIndex = imageSourceIndexes[restaurant.establishment_id] ?? 0;
               const hasImage = !imageLoadErrors[restaurant.establishment_id] && imageCandidateIndex < imageCandidates.length;
               const imageSrc = hasImage ? imageCandidates[imageCandidateIndex] : null;
