@@ -89,6 +89,19 @@ function CollageCell({ panel, index, panelBroken, setPanelBroken, dark, classNam
   );
 }
 
+function getDisplayName(user) {
+  const name = user?.display_name;
+  if (name && String(name).trim()) return String(name).trim();
+  const email = user?.email ?? '';
+  return email.split('@')[0] || 'User';
+}
+
+function getInitials(displayName) {
+  const parts = displayName.trim().split(/\s+/);
+  if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  return (displayName.slice(0, 2) || 'U').toUpperCase();
+}
+
 export function EstablishmentPage() {
   const { slug } = useParams();
   const navigate = useNavigate();
@@ -97,6 +110,8 @@ export function EstablishmentPage() {
   const dark = theme === 'dark';
 
   const [establishment, setEstablishment] = useState(null);
+  const [users, setUsers] = useState([]);
+  const [reviews, setReviews] = useState([]);
   const [loading, setLoading] = useState(true);
   const [galleryOffset, setGalleryOffset] = useState(0);
   const [panelBroken, setPanelBroken] = useState([false, false, false]);
@@ -188,6 +203,49 @@ export function EstablishmentPage() {
   }
   fetchEstablishment();
 }, [slug]);
+
+  useEffect(() => {
+  async function fetchReviews() {
+      if (!establishment) return;
+      try {
+          setLoading(true);
+          const { data, error } = await supabase
+              .from("reviews")
+              .select("*")
+              .eq("establishment_id", establishment.establishment_id);
+          if (error) throw error;
+          setReviews(data);
+      } catch (error) {
+          console.error('Error fetching reviews:', error.message);
+      }
+      finally {
+          setLoading(false);
+      }
+  }
+  fetchReviews();
+  }, [establishment]);
+
+  useEffect(() => {
+    async function fetchUsers() {
+        if (reviews.length === 0) return;
+        try {
+            setLoading(true);
+          const { data, error } = await supabase
+            .from("users")
+            .select("*")
+            .in("user_id", reviews.map((r) => r.user_id));
+          if (error) throw error;
+          setUsers(data);
+        }
+        catch (error) {
+            console.error('Error fetching users:', error.message);
+        }
+        finally {
+            setLoading(false);
+        }
+    }
+    fetchUsers();
+  }, [establishment, reviews]);
 
   if (loading) {
     return (
@@ -373,9 +431,34 @@ export function EstablishmentPage() {
               </div>
 
               {/* Empty State Placeholder */}
-              <div className={`p-16 rounded-[2rem] border-2 border-dashed ${dark ? 'border-white/10 bg-white/5' : 'border-black/5 bg-gray-50'} text-center`}>
+              {reviews.length === 0 && (
+                <div className={`p-16 rounded-[2rem] border-2 border-dashed ${dark ? 'border-white/10 bg-white/5' : 'border-black/5 bg-gray-50'} text-center`}>
                 <p className="text-lg opacity-40">No reviews have been posted yet. Be the first to share your thoughts!</p>
-              </div>
+                </div>
+              )}
+              {reviews.length > 0 && (
+                <div className="space-y-6">
+                  {reviews.map((review) => (
+                    <div key={review.review_id} className={`p-6 rounded-xl ${dark ? 'bg-gray-900/40' : 'bg-gray-100'}`}>
+                      <div className="flex items-center gap-4 mb-4">
+                        <div className="w-12 h-12 rounded-full bg-[#ffbf3e] flex items-center justify-center text-white font-bold">
+                          {getInitials(getDisplayName(users.find((u) => u.user_id === review.user_id)))}
+                        </div>
+                        <div>
+                          <h4 className="font-bold">{getDisplayName(users.find((u) => u.user_id === review.user_id))}</h4>
+                          <p className={`text-sm ${dark ? 'text-gray-400' : 'text-gray-500'}`}>
+                            {new Date(review.updated_at).toLocaleDateString()}
+                          </p>
+                        </div>
+                      </div>
+                      <p className={`leading-relaxed ${dark ? 'text-gray-300' : 'text-gray-700'}`}>
+                        {review.body}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+              
             </section>
           </div>
 
