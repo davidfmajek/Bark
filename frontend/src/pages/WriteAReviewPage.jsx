@@ -1,8 +1,17 @@
-import { Star } from 'lucide-react';
+import { Search, Star, X, ChevronLeft, Loader2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../lib/supabase';
+import { getRestaurantCardImageCandidates } from '../lib/restaurantImages';
+
+const MIN_REVIEW_CHARS = 50;
+
+function getInitialRatingFromNavigateState(state) {
+  const r = state?.initialRating;
+  if (typeof r === 'number' && r >= 1 && r <= 5) return r;
+  return 0;
+}
 
 function cleanSlug(text) {
   return String(text ?? '')
@@ -12,22 +21,448 @@ function cleanSlug(text) {
     .replace(/[^a-z0-9-]/g, '');
 }
 
+function formatReviewDate(iso) {
+  if (!iso) return '';
+  try {
+    return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  } catch {
+    return '';
+  }
+}
+
+function RatingStars({ rating, className = 'h-4 w-4' }) {
+  return (
+    <div className="flex items-center gap-0.5" aria-label={`Rating: ${rating} out of 5`}>
+      {[1, 2, 3, 4, 5].map((i) => (
+        <Star
+          key={i}
+          className={`${className} ${i <= rating ? 'fill-[#ffbf3e] text-[#ffbf3e]' : 'fill-transparent text-current opacity-35'}`}
+        />
+      ))}
+    </div>
+  );
+}
+
+function EstablishmentCardImage({ 
+  establishment, 
+  dark, 
+  imageSourceIndexes, 
+  setImageSourceIndexes, 
+  imageLoadErrors, 
+  setImageLoadErrors 
+}) {
+  const imageCandidates = getRestaurantCardImageCandidates(establishment);
+  const imageCandidateIndex = imageSourceIndexes[establishment.establishment_id] ?? 0;
+  const hasImage = !imageLoadErrors[establishment.establishment_id] && imageCandidateIndex < imageCandidates.length;
+  const imageSrc = hasImage ? imageCandidates[imageCandidateIndex] : null;
+
+  return (
+    <div className="relative h-full min-h-[5rem] w-24 shrink-0 overflow-hidden sm:w-28">
+      {!imageSrc ? (
+        <div className={`h-full w-full ${dark ? 'bg-white/5' : 'bg-black/5'}`} aria-hidden />
+      ) : (
+        <img
+          alt=""
+          src={imageSrc}
+          className="h-full w-full object-cover"
+          onError={() => {
+            const nextIndex = imageCandidateIndex + 1;
+            if (nextIndex < imageCandidates.length) {
+              setImageSourceIndexes((prev) => ({ ...prev, [establishment.establishment_id]: nextIndex }));
+            } else {
+              setImageLoadErrors((prev) => ({ ...prev, [establishment.establishment_id]: true }));
+            }
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function FindBusinessStep({
+  dark,
+  establishments,
+  loading,
+  errorMessage,
+  navigate,
+  imageSourceIndexes,
+  setImageSourceIndexes,
+  imageLoadErrors,
+  setImageLoadErrors,
+}) {
+  const [query, setQuery] = useState('');
+  const [locationFilter, setLocationFilter] = useState('');
+  const [dismissed, setDismissed] = useState(() => new Set());
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const loc = locationFilter.trim().toLowerCase();
+    return establishments.filter((e) => {
+      const nameOk = !q || String(e.name ?? '').toLowerCase().includes(q);
+      const address = [e.address, e.building_name].filter(Boolean).join(' ').toLowerCase();
+      const locOk = !loc || address.includes(loc);
+      return nameOk && locOk;
+    });
+  }, [establishments, query, locationFilter]);
+
+  const suggestions = useMemo(() => {
+    const avgRating = (e) => {
+      const r = Number(e.average_rating ?? e.rating ?? 0);
+      return Number.isFinite(r) ? r : 0;
+    };
+    const reviewCount = (e) => Number(e.total_reviews ?? 0) || 0;
+    return [...filtered]
+      .filter((e) => !dismissed.has(String(e.establishment_id)))
+      .sort((a, b) => {
+        const d = avgRating(b) - avgRating(a);
+        if (d !== 0) return d;
+        const rc = reviewCount(b) - reviewCount(a);
+        if (rc !== 0) return rc;
+        return String(a.name ?? '').localeCompare(String(b.name ?? ''));
+      })
+      .slice(0, 6);
+  }, [filtered, dismissed]);
+
+  const goToReview = (establishmentId, initialRating) => {
+    navigate(`/writeareview/${establishmentId}`, {
+      state: typeof initialRating === 'number' ? { initialRating } : undefined,
+    });
+  };
+
+  const borderInput = dark ? 'border-white/15 bg-[#0f1219] text-white placeholder:text-white/45' : 'border-black/15 bg-white text-black placeholder:text-black/45';
+  const cardBorder = dark ? 'border-white/10 bg-white/[0.03]' : 'border-black/10 bg-white shadow-sm';
+
+  return (
+    <div className="mx-auto max-w-5xl">
+      <div className="min-w-0">
+        <h1 className="mb-2 text-3xl font-bold tracking-tight sm:text-4xl">Find a place to review</h1>
+        <p className={`mb-8 max-w-xl text-base ${dark ? 'text-white/70' : 'text-black/60'}`}>
+          Review anything from your go-to dining hall to your favorite campus café.
+        </p>
+
+        <div className={`flex flex-col overflow-hidden rounded-xl border sm:flex-row ${dark ? 'border-white/15' : 'border-black/15'}`}>
+          <label className="sr-only" htmlFor="write-search-what">
+            Search businesses
+          </label>
+          <input
+            id="write-search-what"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Try dining hall, café, convenience"
+            className={`min-w-0 flex-1 border-b px-4 py-3.5 text-[15px] outline-none sm:border-b-0 sm:border-r ${borderInput} ${dark ? 'sm:border-white/15' : 'sm:border-black/10'}`}
+          />
+          <label className="sr-only" htmlFor="write-search-where">
+            Location
+          </label>
+          <input
+            id="write-search-where"
+            value={locationFilter}
+            onChange={(e) => setLocationFilter(e.target.value)}
+            placeholder="Building or address"
+            className={`min-w-0 flex-1 px-4 py-3.5 text-[15px] outline-none ${borderInput}`}
+          />
+          <button
+            type="button"
+            className="inline-flex shrink-0 items-center justify-center bg-[#ffbf3e] px-5 py-3.5 text-black transition hover:bg-[#f5b635] sm:py-0"
+            aria-label="Search"
+          >
+            <Search className="h-5 w-5" strokeWidth={2.25} />
+          </button>
+        </div>
+      </div>
+
+      {errorMessage ? <p className="mt-6 text-sm font-semibold text-red-500">{errorMessage}</p> : null}
+
+      {loading ? (
+        <div className="mt-12 flex justify-center py-8">
+          <Loader2 className="h-9 w-9 animate-spin text-[#ffbf3e]" />
+        </div>
+      ) : null}
+
+      {!loading && suggestions.length > 0 ? (
+        <section className="mt-14">
+          <h2 className="mb-4 text-lg font-bold">Visited one of these recently?</h2>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {suggestions.map((e) => (
+              <div
+                key={e.establishment_id}
+                className={`relative flex overflow-hidden rounded-xl border ${cardBorder}`}
+              >
+                <button
+                  type="button"
+                  className={`absolute right-2 top-2 z-10 rounded-full p-1 ${dark ? 'text-white/50 hover:bg-white/10 hover:text-white' : 'text-black/40 hover:bg-black/5 hover:text-black'}`}
+                  aria-label={`Dismiss ${e.name}`}
+                  onClick={() =>
+                    setDismissed((prev) => new Set([...prev, String(e.establishment_id)]))
+                  }
+                >
+                  <X className="h-4 w-4" />
+                </button>
+                <div
+                  role="button"
+                  tabIndex={0}
+                  className={`flex min-w-0 flex-1 cursor-pointer text-left transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ffbf3e] ${dark ? 'hover:bg-white/[0.04]' : 'hover:bg-black/[0.02]'}`}
+                  onClick={() => goToReview(e.establishment_id)}
+                  onKeyDown={(ev) => {
+                    if (ev.key === 'Enter' || ev.key === ' ') {
+                      ev.preventDefault();
+                      goToReview(e.establishment_id);
+                    }
+                  }}
+                >
+                  <EstablishmentCardImage
+                    establishment={e}
+                    dark={dark}
+                    imageSourceIndexes={imageSourceIndexes}
+                    setImageSourceIndexes={setImageSourceIndexes}
+                    imageLoadErrors={imageLoadErrors}
+                    setImageLoadErrors={setImageLoadErrors}
+                  />
+                  <div className="flex min-w-0 flex-1 flex-col justify-center gap-2 p-4 pr-10">
+                    <p className="truncate font-bold">{e.name}</p>
+                    <p className={`text-sm ${dark ? 'text-white/60' : 'text-black/55'}`}>Do you recommend this place?</p>
+                    <div className="flex gap-0.5" onClick={(ev) => ev.stopPropagation()}>
+                      {[1, 2, 3, 4, 5].map((i) => (
+                        <button
+                          key={i}
+                          type="button"
+                          className="rounded p-0.5 transition hover:scale-110"
+                          aria-label={`Rate ${i} stars and write a review`}
+                          onClick={(ev) => {
+                            ev.stopPropagation();
+                            goToReview(e.establishment_id, i);
+                          }}
+                        >
+                          <Star className="h-6 w-6 fill-transparent text-[#ffbf3e] opacity-50 hover:opacity-100" />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : !loading && filtered.length === 0 ? (
+        <p className={`mt-12 ${dark ? 'text-white/60' : 'text-black/55'}`}>No places match your search.</p>
+      ) : null}
+    </div>
+  );
+}
+
+function ReviewFormStep({
+  dark,
+  establishment,
+  rating,
+  setRating,
+  hover,
+  setHover,
+  reviewText,
+  setReviewText,
+  saving,
+  errorMessage,
+  successMessage,
+  onSubmit,
+  recentReviews,
+  reviewsLoading,
+  navigate,
+  formLoading,
+}) {
+  const locationLine = [establishment?.building_name, establishment?.address].filter(Boolean).join(' · ');
+  const charCount = reviewText.trim().length;
+  const meetsMin = charCount >= MIN_REVIEW_CHARS;
+  const canPost = rating >= 1 && rating <= 5 && meetsMin && !saving;
+
+  const borderInput = dark ? 'border-white/15 bg-[#0f1219] text-white placeholder:text-white/45' : 'border-black/15 bg-white text-black placeholder:text-black/45';
+
+  const ratingFunByValue = {
+    1: 'wasted my swipe',
+    2: 'lowkey disappointing',
+    3: 'mid at best',
+    4: 'worth the swipe',
+    5: 'no crumbs left',
+  };
+  const displayedRating = hover || rating;
+
+  if (formLoading || !establishment) {
+    return (
+      <div className="flex min-h-[40vh] items-center justify-center">
+        <Loader2 className="h-10 w-10 animate-spin text-[#ffbf3e]" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="mx-auto max-w-6xl">
+      <button
+        type="button"
+        onClick={() => navigate('/writeareview')}
+        className={`mb-8 inline-flex items-center gap-1 text-sm font-medium ${dark ? 'text-white/70 hover:text-white' : 'text-black/60 hover:text-black'}`}
+      >
+        <ChevronLeft className="h-4 w-4" />
+        Find a different place
+      </button>
+
+      <div className="grid gap-10 lg:grid-cols-12 lg:gap-12">
+        <div className="lg:col-span-7">
+          <form
+            className="space-y-8"
+            onSubmit={(e) => {
+              e.preventDefault();
+              onSubmit();
+            }}
+          >
+            <div className="min-w-0">
+              <h1 className="text-xl font-bold leading-tight sm:text-2xl">{establishment?.name}</h1>
+              {locationLine ? (
+                <p className={`mt-1 text-sm ${dark ? 'text-white/60' : 'text-black/55'}`}>{locationLine}</p>
+              ) : null}
+            </div>
+
+            <div>
+              <h2 className="text-lg font-bold">How would you rate your experience?</h2>
+              <div className="mt-3 flex flex-wrap items-center gap-4">
+                <div className="flex items-center gap-1" role="group" aria-label={rating ? `Rating: ${rating} out of 5` : 'Select star rating'}>
+                  {[1, 2, 3, 4, 5].map((i) => {
+                    const active = i <= (hover || rating);
+                    return (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => setRating(i)}
+                        onMouseEnter={() => setHover(i)}
+                        onMouseLeave={() => setHover(0)}
+                        className="inline-flex items-center justify-center p-1"
+                        aria-label={`Set rating to ${i} star: ${ratingFunByValue[i]}`}
+                        aria-pressed={i === rating}
+                      >
+                        <Star
+                          className={`h-9 w-9 cursor-pointer transition sm:h-10 sm:w-10 ${
+                            active ? 'fill-[#ffbf3e] text-[#ffbf3e]' : 'fill-transparent text-current opacity-40'
+                          }`}
+                        />
+                      </button>
+                    );
+                  })}
+                </div>
+                <span className={`text-sm ${dark ? 'text-white/50' : 'text-black/45'}`}>
+                  {displayedRating ? ratingFunByValue[displayedRating] : 'Select your rating'}
+                </span>
+              </div>
+            </div>
+
+            <div>
+              <h2 className="text-lg font-bold">Tell us about your experience</h2>
+              <p className={`mt-1 text-sm ${dark ? 'text-white/50' : 'text-black/45'}`}>
+                A few things to consider: food, service, value, atmosphere.
+              </p>
+              <textarea
+                id="review"
+                value={reviewText}
+                onChange={(e) => setReviewText(e.target.value)}
+                rows={8}
+                className={`mt-4 block w-full rounded-lg border px-4 py-3 text-[15px] leading-relaxed ${borderInput}`}
+                placeholder="Start your review..."
+              />
+              <div className={`mt-2 flex items-center gap-2 text-sm ${meetsMin ? (dark ? 'text-emerald-400/90' : 'text-emerald-700') : dark ? 'text-white/45' : 'text-black/45'}`}>
+                <span>
+                  Reviews need to be at least {MIN_REVIEW_CHARS} characters ({charCount}/{MIN_REVIEW_CHARS}).
+                </span>
+              </div>
+            </div>
+
+            {errorMessage ? <p className="text-sm font-semibold text-red-500">{errorMessage}</p> : null}
+            {successMessage ? <p className="text-sm font-semibold text-green-500">{successMessage}</p> : null}
+
+            <div>
+              <button
+                type="submit"
+                disabled={!canPost}
+                className="inline-flex min-w-[200px] items-center justify-center rounded-lg bg-[#ffbf3e] px-8 py-3 text-base font-semibold text-black shadow-sm transition hover:bg-[#f5b635] disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                {saving ? 'Posting…' : 'Post Review'}
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <aside className={`lg:col-span-5 lg:border-l lg:pl-10 ${dark ? 'border-white/10' : 'border-black/10'}`}>
+          <h3 className="mb-4 text-lg font-bold">Recent reviews</h3>
+          {reviewsLoading ? (
+            <div className="flex py-8">
+              <Loader2 className="h-7 w-7 animate-spin text-[#ffbf3e]" />
+            </div>
+          ) : recentReviews.length === 0 ? (
+            <p className={`text-sm ${dark ? 'text-white/50' : 'text-black/45'}`}>No reviews yet for this place.</p>
+          ) : (
+            <ul className="space-y-6">
+              {recentReviews.map((row) => (
+                <li key={row.review_id}>
+                  <div className="flex gap-3">
+                    <div
+                      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+                        dark ? 'bg-white/10 text-white' : 'bg-black/10 text-black'
+                      }`}
+                    >
+                      {(row.authorName || '?').slice(0, 2).toUpperCase()}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold">{row.authorName || 'Member'}</p>
+                      <div className="mt-1 flex flex-wrap items-center gap-2">
+                        <RatingStars rating={row.rating} />
+                        <span className={`text-xs ${dark ? 'text-white/45' : 'text-black/40'}`}>
+                          {formatReviewDate(row.created_at)}
+                        </span>
+                      </div>
+                      <p className={`mt-2 line-clamp-4 text-sm leading-relaxed ${dark ? 'text-white/75' : 'text-black/70'}`}>
+                        {row.body || '—'}
+                      </p>
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </aside>
+      </div>
+    </div>
+  );
+}
+
 export function WriteAReviewPage() {
   const { theme } = useTheme();
   const dark = theme === 'dark';
   const { slug: establishmentSlug } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [user, setUser] = useState(null);
   const [establishments, setEstablishments] = useState([]);
   const [selectedEstablishmentId, setSelectedEstablishmentId] = useState('');
-  const [rating, setRating] = useState(0);
+  const [rating, setRating] = useState(() => getInitialRatingFromNavigateState(location.state));
   const [hover, setHover] = useState(0);
   const [reviewText, setReviewText] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+  const [imageSourceIndexes, setImageSourceIndexes] = useState({});
+  const [imageLoadErrors, setImageLoadErrors] = useState({});
+  const [recentReviews, setRecentReviews] = useState([]);
+  const [reviewsLoading, setReviewsLoading] = useState(false);
+
+  const isFinderStep = !establishmentSlug;
+
+  const initialRatingFromNav = location.state?.initialRating;
+  useEffect(() => {
+    if (!establishmentSlug) return;
+    const r = getInitialRatingFromNavigateState({ initialRating: initialRatingFromNav });
+    queueMicrotask(() => {
+      setRating(r);
+      setReviewText('');
+      setHover(0);
+    });
+  }, [establishmentSlug, location.key, initialRatingFromNav]);
 
   useEffect(() => {
     async function loadUser() {
@@ -49,14 +484,14 @@ export function WriteAReviewPage() {
     async function loadEstablishments() {
       setLoading(true);
       const { data, error } = await supabase
-        .from('establishments')
-        .select('establishment_id, name')
+        .from('establishments_with_ratings')
+        .select('*')
         .eq('is_active', true)
         .order('name');
 
       if (error) {
         console.error('Error fetching establishments:', error);
-        if (mounted) setErrorMessage('Unable to load restaurants right now.');
+        if (mounted) setErrorMessage('Unable to load places right now.');
         if (mounted) setLoading(false);
         return;
       }
@@ -79,7 +514,9 @@ export function WriteAReviewPage() {
           return;
         }
       }
-      setSelectedEstablishmentId((prev) => prev || String(rows[0].establishment_id));
+      if (!establishmentSlug) {
+        setSelectedEstablishmentId('');
+      }
     }
     loadEstablishments();
     return () => {
@@ -92,17 +529,77 @@ export function WriteAReviewPage() {
     [establishments, selectedEstablishmentId],
   );
 
+  useEffect(() => {
+    if (!selectedEstablishment?.establishment_id || isFinderStep) {
+      return;
+    }
+    let cancelled = false;
+    async function loadRecentReviews() {
+      setReviewsLoading(true);
+      const { data: reviewRows, error } = await supabase
+        .from('reviews')
+        .select('review_id, user_id, rating, body, created_at')
+        .eq('establishment_id', selectedEstablishment.establishment_id)
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+      if (error) {
+        console.error('Error loading reviews:', error);
+        if (!cancelled) {
+          setRecentReviews([]);
+          setReviewsLoading(false);
+        }
+        return;
+      }
+
+      const rows = reviewRows ?? [];
+      if (rows.length === 0) {
+        if (!cancelled) {
+          setRecentReviews([]);
+          setReviewsLoading(false);
+        }
+        return;
+      }
+
+      const userIds = [...new Set(rows.map((r) => r.user_id))];
+      const { data: usersData, error: usersError } = await supabase.from('users').select('user_id, display_name').in('user_id', userIds);
+
+      if (usersError) {
+        console.error('Error loading users for reviews:', usersError);
+      }
+      const nameById = new Map((usersData ?? []).map((u) => [String(u.user_id), u.display_name || 'Member']));
+
+      const merged = rows.map((r) => ({
+        ...r,
+        authorName: nameById.get(String(r.user_id)) || 'Member',
+      }));
+
+      if (!cancelled) {
+        setRecentReviews(merged);
+        setReviewsLoading(false);
+      }
+    }
+    loadRecentReviews();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedEstablishment?.establishment_id, isFinderStep]);
+
   async function handleSubmitReview() {
     if (!user?.id) {
       setErrorMessage('Please sign in to submit a review.');
       return;
     }
     if (!selectedEstablishmentId) {
-      setErrorMessage('Please select a restaurant first.');
+      setErrorMessage('Please select a place first.');
       return;
     }
     if (rating < 1 || rating > 5) {
       setErrorMessage('Please choose a rating from 1 to 5 stars.');
+      return;
+    }
+    if (reviewText.trim().length < MIN_REVIEW_CHARS) {
+      setErrorMessage(`Please write at least ${MIN_REVIEW_CHARS} characters.`);
       return;
     }
 
@@ -125,10 +622,12 @@ export function WriteAReviewPage() {
       return;
     }
 
-    setSuccessMessage(`Review submitted for ${selectedEstablishment?.name ?? 'restaurant'}.`);
+    setSuccessMessage(`Review submitted for ${selectedEstablishment?.name ?? 'this place'}.`);
     setSaving(false);
     navigate('/my-reviews');
   }
+
+  const showNotFound = !isFinderStep && !loading && !selectedEstablishment;
 
   return (
     <div className={`min-h-[calc(100vh-3.5rem)] ${dark ? 'text-white' : 'text-black'}`}>
@@ -145,108 +644,50 @@ export function WriteAReviewPage() {
         </>
       )}
 
-      <main className="container mx-auto px-6 py-12">
-        <div className="mx-auto max-w-4xl">
-          <h1 className="mb-6 text-3xl font-bold">
-            Write a Review{selectedEstablishment ? ` for ${selectedEstablishment.name}` : ''}
-          </h1>
-          <div className={`mb-6 border-b ${dark ? 'border-white/10' : 'border-black/10'}`} />
-
-          {loading ? (
-            <p>Loading restaurants...</p>
-          ) : (
-            <form
-              className="space-y-5"
-              onSubmit={(e) => {
-                e.preventDefault();
-                handleSubmitReview();
-              }}
+      <main className="container mx-auto px-6 py-10 sm:py-12">
+        {showNotFound ? (
+          <div className="mx-auto max-w-lg text-center">
+            <h1 className="text-2xl font-bold">Place not found</h1>
+            <p className={`mt-2 ${dark ? 'text-white/65' : 'text-black/55'}`}>We couldn’t find that establishment.</p>
+            <Link
+              to="/writeareview"
+              className="mt-6 inline-block font-semibold text-[#ffbf3e] underline-offset-4 hover:underline"
             >
-              <div>
-                <label htmlFor="restaurant-select" className="mb-2 block text-2xl font-bold">
-                  Restaurant
-                </label>
-                <select
-                  id="restaurant-select"
-                  value={selectedEstablishmentId}
-                  onChange={(e) => setSelectedEstablishmentId(e.target.value)}
-                  className={`block w-full rounded-md border px-3 py-2 ${
-                    dark
-                      ? 'border-white/10 bg-[#0f1219] text-white'
-                      : 'border-black/15 bg-white text-black'
-                  }`}
-                >
-                  {establishments.map((e) => (
-                    <option key={e.establishment_id} value={e.establishment_id}>
-                      {e.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <h2 className="mb-2 block text-3xl font-bold">Rating</h2>
-                <div className="mt-1 flex items-center gap-1 py-2">
-                  {[1, 2, 3, 4, 5].map((i) => {
-                    const active = i <= (hover || rating);
-                    return (
-                      <button
-                        key={i}
-                        type="button"
-                        onClick={() => setRating(i)}
-                        onMouseEnter={() => setHover(i)}
-                        onMouseLeave={() => setHover(0)}
-                        className="inline-flex items-center justify-center"
-                        aria-label={`Set rating to ${i}`}
-                      >
-                        <Star
-                          className={`h-6 w-6 cursor-pointer transition ${
-                            active ? 'fill-[#ffbf3e] text-[#ffbf3e]' : 'fill-transparent text-current opacity-40'
-                          }`}
-                        />
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div>
-                <label htmlFor="review" className="mb-3 block text-2xl font-medium">
-                  Your Review
-                </label>
-                <textarea
-                  id="review"
-                  value={reviewText}
-                  onChange={(e) => setReviewText(e.target.value)}
-                  rows={5}
-                  className={`block w-full rounded-md border px-3 py-2 ${
-                    dark
-                      ? 'border-white/10 bg-[#0f1219] text-white placeholder:text-white/50'
-                      : 'border-[#ffbf3e] bg-white text-black placeholder:text-black/50'
-                  }`}
-                  placeholder="Share your experience..."
-                />
-              </div>
-
-              {errorMessage ? <p className="text-sm font-semibold text-red-500">{errorMessage}</p> : null}
-              {successMessage ? <p className="text-sm font-semibold text-green-500">{successMessage}</p> : null}
-
-              <div>
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className={`inline-flex items-center justify-center rounded-md border px-4 py-2 text-sm font-medium transition ${
-                    dark
-                      ? 'border-white/15 bg-white/5 text-white/90 hover:bg-white/10 disabled:opacity-60'
-                      : 'border-black/15 bg-black/5 text-black/80 hover:bg-black/10 disabled:opacity-60'
-                  }`}
-                >
-                  {saving ? 'Submitting...' : 'Submit Review'}
-                </button>
-              </div>
-            </form>
-          )}
-        </div>
+              Back to find a place
+            </Link>
+          </div>
+        ) : isFinderStep ? (
+          <FindBusinessStep
+            dark={dark}
+            establishments={establishments}
+            loading={loading}
+            errorMessage={errorMessage}
+            navigate={navigate}
+            imageSourceIndexes={imageSourceIndexes}
+            setImageSourceIndexes={setImageSourceIndexes}
+            imageLoadErrors={imageLoadErrors}
+            setImageLoadErrors={setImageLoadErrors}
+          />
+        ) : (
+          <ReviewFormStep
+            dark={dark}
+            establishment={selectedEstablishment}
+            rating={rating}
+            setRating={setRating}
+            hover={hover}
+            setHover={setHover}
+            reviewText={reviewText}
+            setReviewText={setReviewText}
+            saving={saving}
+            errorMessage={errorMessage}
+            successMessage={successMessage}
+            onSubmit={handleSubmitReview}
+            recentReviews={recentReviews}
+            reviewsLoading={reviewsLoading}
+            navigate={navigate}
+            formLoading={loading}
+          />
+        )}
       </main>
     </div>
   );
