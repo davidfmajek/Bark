@@ -72,7 +72,7 @@ CREATE TABLE review_images (
   storage_url     VARCHAR(512) NOT NULL,
   display_order   INTEGER NOT NULL CHECK (display_order >= 1 AND display_order <= 3),
   file_size_bytes BIGINT NOT NULL,
-  mime_type       VARCHAR(64) NOT NULL CHECK (mime_type IN ('image/jpeg', 'image/png', 'image/webp')), -- only allow these image types we will add more later
+  mime_type       VARCHAR(64) NOT NULL CHECK (mime_type IN ('image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif')),
   uploaded_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

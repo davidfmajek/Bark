@@ -1,11 +1,48 @@
-import { Search, Star, X, ChevronLeft, Loader2 } from 'lucide-react';
+import { Search, Star, X, ChevronLeft, Loader2, ImagePlus } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../lib/supabase';
-import { getRestaurantCardImageCandidates } from '../lib/restaurantImages';
+import { getRestaurantCardImageCandidates, REVIEW_STORAGE_BUCKET } from '../lib/restaurantImages';
 
 const MIN_REVIEW_CHARS = 50;
+const MAX_REVIEW_IMAGES = 3;
+const MAX_REVIEW_IMAGE_BYTES = 5 * 1024 * 1024;
+/** Matches `review_images.mime_type` CHECK in schema / migration. */
+const REVIEW_IMAGE_MIME_TO_EXT = {
+  'image/jpeg': 'jpg',
+  'image/jpg': 'jpg',
+  'image/pjpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'image/heic': 'heic',
+  'image/heif': 'heif',
+  'image/heic-sequence': 'heic',
+};
+
+const REVIEW_IMAGE_EXT_TO_META = {
+  jpg: { ext: 'jpg', mime: 'image/jpeg' },
+  jpeg: { ext: 'jpg', mime: 'image/jpeg' },
+  png: { ext: 'png', mime: 'image/png' },
+  webp: { ext: 'webp', mime: 'image/webp' },
+  heic: { ext: 'heic', mime: 'image/heic' },
+  heif: { ext: 'heif', mime: 'image/heif' },
+};
+
+/** Resolve storage extension + DB mime (filename fallback when `file.type` is empty, e.g. some HEIC picks). */
+function getReviewImageMeta(file) {
+  if (!file) return null;
+  if (file.type && REVIEW_IMAGE_MIME_TO_EXT[file.type]) {
+    const ext = REVIEW_IMAGE_MIME_TO_EXT[file.type];
+    let mime = file.type;
+    if (mime === 'image/jpg' || mime === 'image/pjpeg') mime = 'image/jpeg';
+    if (mime === 'image/heic-sequence') mime = 'image/heic';
+    return { ext, mime };
+  }
+  const m = /\.([a-z0-9]+)$/i.exec(file.name ?? '');
+  const raw = m ? m[1].toLowerCase() : '';
+  return REVIEW_IMAGE_EXT_TO_META[raw] ?? null;
+}
 
 function getInitialRatingFromNavigateState(state) {
   const r = state?.initialRating;
@@ -259,6 +296,8 @@ function ReviewFormStep({
   setHover,
   reviewText,
   setReviewText,
+  reviewPhotos,
+  setReviewPhotos,
   saving,
   errorMessage,
   successMessage,
@@ -268,6 +307,16 @@ function ReviewFormStep({
   navigate,
   formLoading,
 }) {
+  const [photoPreviews, setPhotoPreviews] = useState([]);
+
+  useEffect(() => {
+    const urls = reviewPhotos.map((f) => URL.createObjectURL(f));
+    setPhotoPreviews(urls);
+    return () => {
+      urls.forEach((u) => URL.revokeObjectURL(u));
+    };
+  }, [reviewPhotos]);
+
   const locationLine = [establishment?.building_name, establishment?.address].filter(Boolean).join(' · ');
   const charCount = reviewText.trim().length;
   const meetsMin = charCount >= MIN_REVIEW_CHARS;
@@ -371,6 +420,89 @@ function ReviewFormStep({
               </div>
             </div>
 
+            <div>
+              <h2 className="text-lg font-bold">Add photos (optional)</h2>
+              <p className={`mt-1 text-sm ${dark ? 'text-white/50' : 'text-black/45'}`}>
+                Up to {MAX_REVIEW_IMAGES} images — JPEG, PNG, WebP, or HEIC/HEIF, max{' '}
+                {Math.round(MAX_REVIEW_IMAGE_BYTES / (1024 * 1024))} MB each.
+              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <label
+                  className={`inline-flex cursor-pointer items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-semibold transition ${
+                    reviewPhotos.length >= MAX_REVIEW_IMAGES
+                      ? dark
+                        ? 'cursor-not-allowed border-white/10 text-white/35'
+                        : 'cursor-not-allowed border-black/10 text-black/35'
+                      : dark
+                        ? 'border-white/15 text-white/90 hover:bg-white/10'
+                        : 'border-black/15 text-black hover:bg-black/[0.04]'
+                  }`}
+                >
+                  <ImagePlus className="h-4 w-4 shrink-0" aria-hidden />
+                  {reviewPhotos.length >= MAX_REVIEW_IMAGES ? 'Photo limit reached' : 'Choose photos'}
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif"
+                    multiple
+                    disabled={reviewPhotos.length >= MAX_REVIEW_IMAGES}
+                    className="sr-only"
+                    onChange={(e) => {
+                      const picked = Array.from(e.target.files || []);
+                      e.target.value = '';
+                      setReviewPhotos((prev) => {
+                        const next = [...prev];
+                        for (const file of picked) {
+                          if (!getReviewImageMeta(file)) continue;
+                          if (file.size > MAX_REVIEW_IMAGE_BYTES) continue;
+                          if (next.length >= MAX_REVIEW_IMAGES) break;
+                          next.push(file);
+                        }
+                        return next;
+                      });
+                    }}
+                  />
+                </label>
+                <span className={`text-sm ${dark ? 'text-white/45' : 'text-black/45'}`}>
+                  {reviewPhotos.length}/{MAX_REVIEW_IMAGES} added
+                </span>
+              </div>
+              {reviewPhotos.length > 0 ? (
+                <ul className="mt-4 flex flex-wrap gap-3">
+                  {reviewPhotos.map((file, i) => (
+                    <li
+                      key={`${file.name}-${file.size}-${i}`}
+                      className={`relative overflow-hidden rounded-lg ring-1 ${
+                        dark ? 'ring-white/15' : 'ring-black/10'
+                      }`}
+                    >
+                      {photoPreviews[i] ? (
+                        <img
+                          src={photoPreviews[i]}
+                          alt=""
+                          className="h-24 w-24 object-cover sm:h-28 sm:w-28"
+                        />
+                      ) : (
+                        <div
+                          className={`h-24 w-24 animate-pulse sm:h-28 sm:w-28 ${dark ? 'bg-white/10' : 'bg-black/5'}`}
+                          aria-hidden
+                        />
+                      )}
+                      <button
+                        type="button"
+                        aria-label={`Remove photo ${i + 1}`}
+                        className={`absolute right-1 top-1 rounded-full p-1 shadow ${
+                          dark ? 'bg-black/70 text-white hover:bg-black/90' : 'bg-white/90 text-black hover:bg-white'
+                        }`}
+                        onClick={() => setReviewPhotos((prev) => prev.filter((_, j) => j !== i))}
+                      >
+                        <X className="h-3.5 w-3.5" strokeWidth={2.5} />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+
             {errorMessage ? <p className="text-sm font-semibold text-red-500">{errorMessage}</p> : null}
             {successMessage ? <p className="text-sm font-semibold text-green-500">{successMessage}</p> : null}
 
@@ -442,6 +574,7 @@ export function WriteAReviewPage() {
   const [rating, setRating] = useState(() => getInitialRatingFromNavigateState(location.state));
   const [hover, setHover] = useState(0);
   const [reviewText, setReviewText] = useState('');
+  const [reviewPhotos, setReviewPhotos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -461,6 +594,7 @@ export function WriteAReviewPage() {
       setRating(r);
       setReviewText('');
       setHover(0);
+      setReviewPhotos([]);
     });
   }, [establishmentSlug, location.key, initialRatingFromNav]);
 
@@ -603,27 +737,83 @@ export function WriteAReviewPage() {
       return;
     }
 
+    const photosToUpload = reviewPhotos.slice(0, MAX_REVIEW_IMAGES);
+    for (const f of photosToUpload) {
+      if (!getReviewImageMeta(f) || f.size > MAX_REVIEW_IMAGE_BYTES) {
+        setErrorMessage(
+          'Photos must be JPEG, PNG, WebP, or HEIC/HEIF and at most 5 MB each.',
+        );
+        return;
+      }
+    }
+
     setSaving(true);
     setErrorMessage('');
     setSuccessMessage('');
 
-    const { error } = await supabase.from('reviews').insert({
-      user_id: user.id,
-      establishment_id: selectedEstablishmentId,
-      rating,
-      body: reviewText.trim(),
-      is_flagged: false,
-    });
+    const { data: reviewRow, error } = await supabase
+      .from('reviews')
+      .insert({
+        user_id: user.id,
+        establishment_id: selectedEstablishmentId,
+        rating,
+        body: reviewText.trim(),
+        is_flagged: false,
+      })
+      .select('review_id')
+      .single();
 
-    if (error) {
+    if (error || !reviewRow?.review_id) {
       console.error('Error adding review to database:', error);
-      setErrorMessage(error.message || 'Unable to submit review right now.');
+      setErrorMessage(error?.message || 'Unable to submit review right now.');
+      setSaving(false);
+      return;
+    }
+
+    const reviewId = reviewRow.review_id;
+    const uploadedPaths = [];
+
+    try {
+      for (let i = 0; i < photosToUpload.length; i++) {
+        const file = photosToUpload[i];
+        const meta = getReviewImageMeta(file);
+        const ext = meta.ext;
+        const objectPath = `review-images/${reviewId}/${i + 1}.${ext}`;
+        const { error: upErr } = await supabase.storage.from(REVIEW_STORAGE_BUCKET).upload(objectPath, file, {
+          contentType: meta.mime,
+          upsert: false,
+        });
+        if (upErr) throw upErr;
+        uploadedPaths.push(objectPath);
+      }
+
+      if (uploadedPaths.length > 0) {
+        const imageRows = photosToUpload.map((file, i) => ({
+          review_id: reviewId,
+          storage_url: uploadedPaths[i],
+          display_order: i + 1,
+          file_size_bytes: file.size,
+          mime_type: getReviewImageMeta(file).mime,
+        }));
+        const { error: imgErr } = await supabase.from('review_images').insert(imageRows);
+        if (imgErr) throw imgErr;
+      }
+    } catch (err) {
+      console.error('Review image upload failed:', err);
+      if (uploadedPaths.length > 0) {
+        await supabase.storage.from(REVIEW_STORAGE_BUCKET).remove(uploadedPaths);
+      }
+      await supabase.from('reviews').delete().eq('review_id', reviewId);
+      setErrorMessage(
+        err?.message || 'Review was not saved because photo upload failed. Please try again without photos or check your connection.',
+      );
       setSaving(false);
       return;
     }
 
     setSuccessMessage(`Review submitted for ${selectedEstablishment?.name ?? 'this place'}.`);
     setSaving(false);
+    setReviewPhotos([]);
     navigate('/my-reviews');
   }
 
@@ -678,6 +868,8 @@ export function WriteAReviewPage() {
             setHover={setHover}
             reviewText={reviewText}
             setReviewText={setReviewText}
+            reviewPhotos={reviewPhotos}
+            setReviewPhotos={setReviewPhotos}
             saving={saving}
             errorMessage={errorMessage}
             successMessage={successMessage}

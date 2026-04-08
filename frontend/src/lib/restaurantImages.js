@@ -1,6 +1,7 @@
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const STORAGE_BUCKET = import.meta.env.VITE_SUPABASE_STORAGE_BUCKET || 'Resturant-logos';
-const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'webp'];
+const STORAGE_BUCKET = import.meta.env.VITE_SUPABASE_STORAGE_BUCKET || 'Resturant-logos'; // logos + hero images
+export const REVIEW_STORAGE_BUCKET = import.meta.env.VITE_SUPABASE_REVIEW_STORAGE_BUCKET || 'review-media'; // review uploads
+const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'webp', 'heic', 'heif'];
 const HEROES_FOLDER = 'heroes';
 const LOGOS_FOLDER = 'logos';
 const IMAGES_FOLDER = 'images';
@@ -22,6 +23,25 @@ function isAbsoluteHttpUrl(value) {
   return /^https?:\/\//i.test(String(value ?? '').trim());
 }
 
+/** Absolute URLs in `review_images.storage_url` must be our project Storage (not random pages). */
+function isTrustedSupabaseStorageHttpUrl(url) {
+  const s = String(url ?? '').trim();
+  if (!isAbsoluteHttpUrl(s) || !SUPABASE_URL) return false;
+  try {
+    const u = new URL(s);
+    const base = new URL(SUPABASE_URL);
+    if (u.origin !== base.origin) return false;
+    return u.pathname.includes('/storage/v1/object/');
+  } catch {
+    return false;
+  }
+}
+
+// Trim; strip leading slashes (object keys have no leading /).
+function normalizeStorageObjectPath(path) {
+  return String(path ?? '').trim().replace(/^\/+/, '');
+}
+
 function getPathOrUrlCandidateUrls(supabase, candidate) {
   const value = String(candidate ?? '').trim();
   if (!value) return [];
@@ -37,6 +57,54 @@ function getPathOrUrlCandidateUrls(supabase, candidate) {
   return urls;
 }
 
+// Public URL for a review-media path. Useless if bucket is private.
+export function getPrimaryReviewMediaUrl(supabase, storagePath) {
+  const path = normalizeStorageObjectPath(storagePath);
+  if (!path) return '';
+  const candidates = getPathOrUrlCandidateUrlsForBucket(supabase, path, REVIEW_STORAGE_BUCKET);
+  return candidates[0] ?? '';
+}
+
+const REVIEW_IMAGE_SIGNED_URL_TTL_SEC = 60 * 60 * 24 * 7; // 7d
+
+// `<img src>` for review photos: signed URL first, else public URL.
+export async function resolveReviewImageForDisplay(supabase, storagePath) {
+  const path = normalizeStorageObjectPath(storagePath);
+  if (!path) return '';
+  if (isAbsoluteHttpUrl(path)) {
+    return isTrustedSupabaseStorageHttpUrl(path) ? path : '';
+  }
+
+  if (!supabase?.storage || !REVIEW_STORAGE_BUCKET) {
+    return getPrimaryReviewMediaUrl(supabase, path);
+  }
+
+  const { data, error } = await supabase.storage
+    .from(REVIEW_STORAGE_BUCKET)
+    .createSignedUrl(path, REVIEW_IMAGE_SIGNED_URL_TTL_SEC);
+
+  if (!error && data?.signedUrl) return data.signedUrl;
+  return getPrimaryReviewMediaUrl(supabase, path);
+}
+
+// Public URL candidates for `bucketName` + path, or pass through http(s) URLs.
+function getPathOrUrlCandidateUrlsForBucket(supabase, candidate, bucketName) {
+  const value = normalizeStorageObjectPath(candidate);
+  if (!value) return [];
+  if (isAbsoluteHttpUrl(value)) return [value];
+
+  const urls = [];
+  if (supabase && bucketName) {
+    const { data } = supabase.storage.from(bucketName).getPublicUrl(value);
+    if (data?.publicUrl) urls.push(data.publicUrl);
+  }
+  if (SUPABASE_URL && bucketName) {
+    const direct = `${SUPABASE_URL}/storage/v1/object/public/${bucketName}/${encodeObjectPath(value)}`;
+    if (direct && !urls.includes(direct)) urls.push(direct);
+  }
+  return urls;
+}
+
 function getConventionalCandidatePathsById(id) {
   const paths = [];
   for (const ext of IMAGE_EXTENSIONS) {
@@ -47,10 +115,18 @@ function getConventionalCandidatePathsById(id) {
     paths.push(`${IMAGES_FOLDER}/${LOGOS_FOLDER}/${fileName}`);
     paths.push(`${HEROES_FOLDER}/${IMAGES_FOLDER}/${fileName}`);
     paths.push(`${LOGOS_FOLDER}/${IMAGES_FOLDER}/${fileName}`);
-    // Legacy fallback for prior root-level naming.
-    paths.push(fileName);
+    paths.push(fileName); // legacy: file at bucket root
   }
   return [...new Set(paths)];
+}
+
+// Logos before heroes so a single brand slot in the collage tends to show the logo.
+function orderedBrandCandidatePathsForId(establishmentId) {
+  const all = getConventionalCandidatePathsById(establishmentId);
+  const logos = all.filter((p) => p.startsWith(`${LOGOS_FOLDER}/`));
+  const heroes = all.filter((p) => p.startsWith(`${HEROES_FOLDER}/`));
+  const rest = all.filter((p) => !logos.includes(p) && !heroes.includes(p));
+  return [...logos, ...heroes, ...rest];
 }
 
 export function getRestaurantImageCandidates(restaurant) {
@@ -65,7 +141,6 @@ export function getRestaurantImageCandidates(restaurant) {
   }
 
   if (id) {
-    // Current convention prefers folder paths over root-level files.
     candidates.push(...getConventionalCandidatePathsById(id));
   }
 
@@ -87,8 +162,7 @@ export function getRestaurantCardImageCandidates(restaurant) {
   if (id) {
     for (const ext of IMAGE_EXTENSIONS) {
       const fileName = `${id}.${ext}`;
-      // Cards should prioritize logo over hero.
-      candidates.push(`${LOGOS_FOLDER}/${fileName}`);
+      candidates.push(`${LOGOS_FOLDER}/${fileName}`); // logo before hero on cards
       candidates.push(`${HEROES_FOLDER}/${fileName}`);
       candidates.push(`${IMAGES_FOLDER}/${LOGOS_FOLDER}/${fileName}`);
       candidates.push(`${IMAGES_FOLDER}/${HEROES_FOLDER}/${fileName}`);
@@ -102,10 +176,7 @@ export function getRestaurantCardImageCandidates(restaurant) {
   return deduped.flatMap((candidate) => getPathOrUrlCandidateUrls(null, candidate));
 }
 
-/**
- * @deprecated Prefer {@link fetchCarouselSlidesFromStorage} — this used the first guessed URL per
- * restaurant without checking the object exists, which breaks the homepage carousel.
- */
+// First candidate URL only — often 404. Use fetchCarouselSlidesFromStorage.
 export function getRestaurantCarouselSlides(restaurants = []) {
   return restaurants.map((restaurant) => {
     const candidates = getRestaurantImageCandidates(restaurant);
@@ -119,7 +190,7 @@ export function getRestaurantCarouselSlides(restaurants = []) {
 }
 
 async function listImagePathsInFolder(supabase, bucket, folder) {
-  const imageRe = /\.(png|jpg|jpeg|webp)$/i;
+  const imageRe = /\.(png|jpg|jpeg|webp|heic|heif)$/i;
   const { data, error } = await supabase.storage.from(bucket).list(folder, {
     limit: 1000,
     offset: 0,
@@ -135,13 +206,14 @@ function getConventionalStoragePath(establishmentId, heroesSet, logosSet) {
   const id = String(establishmentId ?? '').trim();
   if (!id) return null;
   for (const p of getConventionalCandidatePathsById(id)) {
-    // list(folder) returns names relative to that folder, so only these two sets are reliable.
+    // Only heroes/ and logos/ list() results are trustworthy here.
     if (p.startsWith(`${HEROES_FOLDER}/`) && heroesSet.has(p)) return p;
     if (p.startsWith(`${LOGOS_FOLDER}/`) && logosSet.has(p)) return p;
   }
   return null;
 }
 
+// True if the URL loads in an Image() (12s max).
 function probePublicImageUrl(url) {
   return new Promise((resolve) => {
     if (!url) return resolve(false);
@@ -159,13 +231,9 @@ function probePublicImageUrl(url) {
   });
 }
 
-/** Safety cap for homepage background + hero carousels. */
-export const MAX_HOME_CAROUSEL_SLIDES = 24;
+export const MAX_HOME_CAROUSEL_SLIDES = 24; // home carousel slide limit
 
-/**
- * One slide per establishment that has at least one image in the storage bucket.
- * Lists the bucket once, then picks the best matching file per establishment.
- */
+// One slide per place: list heroes/logos once, match by establishment id (or probe fallback).
 export async function fetchCarouselSlidesFromStorage(supabase, establishments) {
   if (!supabase || !Array.isArray(establishments) || establishments.length === 0) return [];
 
@@ -240,10 +308,9 @@ async function fetchCarouselSlidesByProbing(establishments) {
   return slides;
 }
 
-/** Max photos per establishment detail page (collage + modal). */
-export const MAX_ESTABLISHMENT_GALLERY_IMAGES = 50;
+export const MAX_ESTABLISHMENT_GALLERY_IMAGES = 50; // establishment page gallery cap
 
-/** Distinct storage paths for establishment detail collage (hero + extras). */
+// Conventional hero/logo path guesses for one establishment.
 function getEstablishmentStorageGalleryPaths(restaurant) {
   const id = String(restaurant?.establishment_id ?? '').trim();
   if (!id) return [];
@@ -251,11 +318,8 @@ function getEstablishmentStorageGalleryPaths(restaurant) {
   return getConventionalCandidatePathsById(id);
 }
 
-/**
- * Ordered candidate URLs (not verified). Used as probe order when storage listing fails.
- * Includes explicit header image path when set, then conventional folder-based paths.
- * Capped at {@link MAX_ESTABLISHMENT_GALLERY_IMAGES}.
- */
+
+// Sync URL list for establishment gallery (no Storage list; for fallback probing).
 export function getEstablishmentGalleryUrls(establishment) {
   const urls = [];
   const push = (u) => {
@@ -283,6 +347,20 @@ export function getEstablishmentGalleryUrls(establishment) {
   return urls.slice(0, MAX_ESTABLISHMENT_GALLERY_IMAGES);
 }
 
+// Logos/heroes/header first, then review-media. Deduped, capped at max.
+function mergeBrandThenReviewUrls(brandUrls, reviewUrls, max) {
+  const out = [];
+  const seen = new Set();
+  const push = (u) => {
+    if (!u || seen.has(u) || out.length >= max) return;
+    seen.add(u);
+    out.push(u);
+  };
+  for (const u of brandUrls) push(u);
+  for (const u of reviewUrls) push(u);
+  return out;
+}
+
 async function fetchReviewImageUrlsForEstablishment(supabase, establishmentId) {
   if (!supabase || !establishmentId) return [];
   const { data, error } = await supabase
@@ -291,34 +369,42 @@ async function fetchReviewImageUrlsForEstablishment(supabase, establishmentId) {
     .eq('reviews.establishment_id', establishmentId)
     .order('display_order', { ascending: true });
 
-  if (error || !Array.isArray(data) || data.length === 0) return [];
+  if (error) {
+    console.warn('fetchReviewImageUrlsForEstablishment:', error.message ?? error);
+    return [];
+  }
+  if (!Array.isArray(data) || data.length === 0) return [];
 
   const urls = [];
   for (const row of data) {
-    const candidates = getPathOrUrlCandidateUrls(supabase, row?.storage_url);
-    for (const url of candidates) {
-      if (!urls.includes(url)) urls.push(url);
-    }
+    const u = await resolveReviewImageForDisplay(supabase, row?.storage_url);
+    if (u && !urls.includes(u)) urls.push(u);
   }
   return urls;
 }
 
-/**
- * Resolves only URLs for objects that exist in Storage (or loadable header_image).
- * Returns all matching files for this establishment, up to {@link MAX_ESTABLISHMENT_GALLERY_IMAGES}.
- */
+// Async gallery: restaurant-logos (heroes/logos + explicit/header) first, then review-media.
 export async function fetchEstablishmentGalleryUrls(supabase, establishment) {
   const id = String(establishment?.establishment_id ?? '').trim();
   const bucket = STORAGE_BUCKET;
   const max = MAX_ESTABLISHMENT_GALLERY_IMAGES;
 
+  const reviewUrls =
+    establishment && supabase && id ? await fetchReviewImageUrlsForEstablishment(supabase, id) : [];
+
   if (!establishment || !supabase || !bucket || !id) {
+    const brandEarly = [];
     const explicit = getPathOrUrlCandidateUrls(supabase, establishment?.header_image_path);
     if (explicit.length > 0 && (await probePublicImageUrl(explicit[0]))) {
-      return [explicit[0]].slice(0, max);
+      brandEarly.push(explicit[0]);
     }
     const hi = establishment?.header_image;
-    if (hi && (await probePublicImageUrl(hi))) return [hi].slice(0, max);
+    if (hi && typeof hi === 'string' && !brandEarly.includes(hi) && (await probePublicImageUrl(hi))) {
+      brandEarly.unshift(hi);
+    }
+    if (brandEarly.length > 0 || reviewUrls.length > 0) {
+      return mergeBrandThenReviewUrls(brandEarly, reviewUrls, max);
+    }
     return [];
   }
 
@@ -329,58 +415,64 @@ export async function fetchEstablishmentGalleryUrls(supabase, establishment) {
   const heroesSet = new Set(heroPaths);
   const logosSet = new Set(logoPaths);
 
-  let urls = [];
-
-  const explicitLogo = getPathOrUrlCandidateUrls(supabase, establishment?.logo_path);
-  if (explicitLogo.length > 0) {
-    urls.push(explicitLogo[0]);
-  }
-
-  const explicit = getPathOrUrlCandidateUrls(supabase, establishment?.header_image_path);
-  if (explicit.length > 0) {
-    urls.push(explicit[0]);
-  }
-
-  // Include both conventional hero/logo assets for this establishment if present.
-  for (const p of getConventionalCandidatePathsById(id)) {
-    if (urls.length >= max) break;
+  // Paths confirmed by list() — do not probe (CORS/timing often fails on valid Supabase URLs).
+  const brandFromBucket = [];
+  let listedMatchForThisPlace = false;
+  for (const p of orderedBrandCandidatePathsForId(id)) {
+    if (brandFromBucket.length >= max) break;
     const isHeroPath = p.startsWith(`${HEROES_FOLDER}/`);
     const isLogoPath = p.startsWith(`${LOGOS_FOLDER}/`);
     const exists = (isHeroPath && heroesSet.has(p)) || (isLogoPath && logosSet.has(p));
     if (!exists) continue;
+    listedMatchForThisPlace = true;
     const { data: pub } = supabase.storage.from(bucket).getPublicUrl(p);
     const url = pub?.publicUrl;
-    if (url && !urls.includes(url)) urls.push(url);
+    if (url && !brandFromBucket.includes(url)) brandFromBucket.push(url);
+  }
+
+  // list() often returns [] without Storage SELECT policies — still try public object URLs.
+  if (!listedMatchForThisPlace) {
+    const extRe = new RegExp(`\\.(${IMAGE_EXTENSIONS.join('|')})$`, 'i');
+    for (const p of orderedBrandCandidatePathsForId(id)) {
+      if (brandFromBucket.length >= max) break;
+      const inHeroOrLogo =
+        p.startsWith(`${HEROES_FOLDER}/`) ||
+        p.startsWith(`${LOGOS_FOLDER}/`) ||
+        p.startsWith(`${IMAGES_FOLDER}/${HEROES_FOLDER}/`) ||
+        p.startsWith(`${IMAGES_FOLDER}/${LOGOS_FOLDER}/`);
+      const rootImage = !p.includes('/') && extRe.test(p);
+      if (!inHeroOrLogo && !rootImage) continue;
+      const { data: pub } = supabase.storage.from(bucket).getPublicUrl(p);
+      const url = pub?.publicUrl;
+      if (!url || brandFromBucket.includes(url)) continue;
+      if (await probePublicImageUrl(url)) brandFromBucket.push(url);
+    }
+  }
+
+  const explicitLogo = getPathOrUrlCandidateUrls(supabase, establishment?.logo_path);
+  const explicitHeader = getPathOrUrlCandidateUrls(supabase, establishment?.header_image_path);
+  for (const url of [explicitLogo[0], explicitHeader[0]].filter(Boolean)) {
+    if (brandFromBucket.length >= max) break;
+    if (brandFromBucket.includes(url)) continue;
+    if (await probePublicImageUrl(url)) brandFromBucket.push(url);
   }
 
   const hi = establishment.header_image;
-  if (hi && typeof hi === 'string') {
-    const already = urls.includes(hi);
-    if (!already && (await probePublicImageUrl(hi))) {
-      urls = [hi, ...urls].filter((u, i, a) => a.indexOf(u) === i).slice(0, max);
-    }
+  if (hi && typeof hi === 'string' && !brandFromBucket.includes(hi) && (await probePublicImageUrl(hi))) {
+    brandFromBucket.unshift(hi);
   }
 
-  // Append all review images for this establishment.
-  if (urls.length < max) {
-    const reviewImageUrls = await fetchReviewImageUrlsForEstablishment(supabase, id);
-    for (const reviewUrl of reviewImageUrls) {
-      if (urls.length >= max) break;
-      if (!reviewUrl || urls.includes(reviewUrl)) continue;
-      urls.push(reviewUrl);
-    }
-  }
-
-  if (urls.length > 0) {
-    return urls.slice(0, max);
+  const final = mergeBrandThenReviewUrls(brandFromBucket, reviewUrls, max);
+  if (final.length > 0) {
+    return final;
   }
 
   const candidates = getEstablishmentGalleryUrls(establishment);
-  const verified = [];
+  const brandFallback = [];
   for (const url of candidates) {
-    if (verified.length >= max) break;
-    if (!url) continue;
-    if (await probePublicImageUrl(url)) verified.push(url);
+    if (brandFallback.length >= max) break;
+    if (!url || brandFallback.includes(url)) continue;
+    if (await probePublicImageUrl(url)) brandFallback.push(url);
   }
-  return verified;
+  return mergeBrandThenReviewUrls(brandFallback, reviewUrls, max);
 }

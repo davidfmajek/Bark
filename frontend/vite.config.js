@@ -3,9 +3,9 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
-// https://vite.dev/config/
+// Vite config: https://vite.dev/config/
 export default defineConfig({
-  envDir: '..',
+  envDir: '..', // load .env from repo root
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
@@ -14,12 +14,7 @@ export default defineConfig({
   },
   server: {
     fs: {
-      // Allow importing slide images stored in the Cursor project folder.
-      allow: [
-        path.resolve(__dirname),
-        path.resolve(__dirname, '..'),
-        path.resolve(__dirname, '../../.cursor/projects/c-Users-David-Bark/assets'),
-      ],
+      allow: [path.resolve(__dirname), path.resolve(__dirname, '..')],
     },
   },
 })

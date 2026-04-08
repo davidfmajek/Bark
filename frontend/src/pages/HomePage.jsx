@@ -91,7 +91,7 @@ export function HomePage() {
           return {
             id: est.establishment_id,
             name: est.name,
-            meta: `${est.building_name || 'Campus'} • ${est.cuisine || 'Dining'}`,
+            meta: `${est.building_name || 'Campus'} \u00b7 ${est.category || 'Dining'}`,
             rating: avg,
             badge: avg >= 4.5 ? 'TOP RATED' : (avg >= 4.0 ? 'POPULAR' : null),
             accent: 'from-[#f5bf3e]/20 to-transparent',
@@ -108,7 +108,7 @@ export function HomePage() {
           const reviewerName = latestReview.users?.display_name || 'Anonymous Retriever';
 
           return {
-            id: latestReview.review_id || latestReview.id,
+            id: latestReview.review_id || latestReview.id, 
             name: reviewerName,
             initials: reviewerName.split(/[ _]/).map(n => n[0]).join('').toUpperCase().substring(0, 2),
             establishmentName: spot.name,

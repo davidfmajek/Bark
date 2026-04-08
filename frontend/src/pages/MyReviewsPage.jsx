@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../lib/supabase';
+import { REVIEW_STORAGE_BUCKET, resolveReviewImageForDisplay } from '../lib/restaurantImages';
 
 function normalizeDisplayRating(rawRating) {
   const numeric = Number(rawRating);
@@ -28,6 +29,24 @@ function RatingStars({ rating }) {
   );
 }
 
+function toStorageObjectPath(storageUrlOrPath) {
+  const raw = String(storageUrlOrPath ?? '').trim();
+  if (!raw) return '';
+  if (/^https?:\/\//i.test(raw)) {
+    try {
+      const u = new URL(raw);
+      const marker = `/storage/v1/object/public/${REVIEW_STORAGE_BUCKET}/`;
+      const idx = u.pathname.indexOf(marker);
+      if (idx >= 0) {
+        return decodeURIComponent(u.pathname.slice(idx + marker.length)).replace(/^\/+/, '');
+      }
+    } catch {
+      return '';
+    }
+  }
+  return raw.replace(/^\/+/, '');
+}
+
 export function MyReviewsPage() {
   const { theme } = useTheme();
   const { user } = useAuth();
@@ -43,6 +62,8 @@ export function MyReviewsPage() {
   const [deletingReviewId, setDeletingReviewId] = useState(null);
   const [deleteError, setDeleteError] = useState('');
   const [deleteErrorReviewId, setDeleteErrorReviewId] = useState(null);
+  /** @type {Record<string, { src: string; key: string }[]>} */
+  const [reviewPhotosByReviewId, setReviewPhotosByReviewId] = useState({});
 
   useEffect(() => {
     let mounted = true;
@@ -105,6 +126,50 @@ export function MyReviewsPage() {
       mounted = false;
     };
   }, [user?.id]);
+
+  useEffect(() => {
+    if (reviews.length === 0) {
+      setReviewPhotosByReviewId({});
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const ids = reviews.map((r) => r.review_id).filter(Boolean);
+      const { data, error } = await supabase
+        .from('review_images')
+        .select('image_id, review_id, storage_url, display_order')
+        .in('review_id', ids);
+      if (cancelled) return;
+      if (error) {
+        console.error('Error fetching review images:', error.message);
+        setReviewPhotosByReviewId({});
+        return;
+      }
+      const grouped = new Map();
+      for (const row of data ?? []) {
+        const rid = String(row.review_id);
+        if (!grouped.has(rid)) grouped.set(rid, []);
+        grouped.get(rid).push(row);
+      }
+      const next = {};
+      for (const [rid, rows] of grouped) {
+        rows.sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0));
+        const photos = [];
+        for (const r of rows) {
+          const src = await resolveReviewImageForDisplay(supabase, r.storage_url);
+          photos.push({
+            src,
+            key: String(r.image_id ?? `${rid}-${r.display_order}`),
+          });
+        }
+        next[rid] = photos.filter((p) => p.src);
+      }
+      if (!cancelled) setReviewPhotosByReviewId(next);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [reviews]);
 
   const reviewCountLabel = useMemo(() => {
     if (reviews.length === 1) return '1 review';
@@ -169,6 +234,33 @@ export function MyReviewsPage() {
     if (!confirmed) return;
 
     setDeletingReviewId(review.review_id);
+
+    const { data: imageRows, error: imageListError } = await supabase
+      .from('review_images')
+      .select('storage_url')
+      .eq('review_id', review.review_id);
+
+    if (imageListError) {
+      console.error('Error loading review images before delete:', imageListError);
+    } else {
+      const paths = (imageRows ?? [])
+        .map((r) => toStorageObjectPath(r.storage_url))
+        .filter(Boolean);
+      if (paths.length > 0) {
+        const { error: storageDeleteError } = await supabase
+          .storage
+          .from(REVIEW_STORAGE_BUCKET)
+          .remove(paths);
+        if (storageDeleteError) {
+          console.error('Error deleting review images from storage:', storageDeleteError);
+          setDeleteError(storageDeleteError.message || 'Unable to delete review photos from storage.');
+          setDeleteErrorReviewId(review.review_id);
+          setDeletingReviewId(null);
+          return;
+        }
+      }
+    }
+
     const { error } = await supabase
       .from('reviews')
       .delete()
@@ -241,6 +333,7 @@ export function MyReviewsPage() {
                   const isEditing = editingReviewId === review.review_id;
                   const isSaving = savingReviewId === review.review_id;
                   const isDeleting = deletingReviewId === review.review_id;
+                  const photos = reviewPhotosByReviewId[String(review.review_id)] ?? [];
                   return (
                     <article key={review.review_id} className="py-5">
                       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -284,6 +377,26 @@ export function MyReviewsPage() {
                           </div>
                         )}
                       </div>
+
+                      {photos.length > 0 ? (
+                        <div className="mt-3 grid max-w-md grid-cols-3 gap-2">
+                          {photos.map((p) => (
+                            <div
+                              key={p.key}
+                              className={`overflow-hidden rounded-lg ring-1 ${
+                                dark ? 'ring-white/10' : 'ring-black/10'
+                              }`}
+                            >
+                              <img
+                                src={p.src}
+                                alt=""
+                                className="aspect-square w-full object-cover"
+                                loading="lazy"
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
 
                       {isEditing ? (
                         <div className="mt-3 space-y-3">

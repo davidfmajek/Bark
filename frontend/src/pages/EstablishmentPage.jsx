@@ -1,22 +1,24 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase.js';
-import { 
-  Clock, 
-  MapPin, 
-  ChevronLeft, 
+import {
+  Clock,
+  MapPin,
+  ChevronLeft,
   ChevronRight,
-  Star, 
-  Loader2, 
-  Utensils, 
-  Info, 
+  Star,
+  Loader2,
+  Utensils,
+  Info,
   FilePenLine,
   Images,
   X,
+  ThumbsUp,
 } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from "../contexts/AuthContext";
-import { fetchEstablishmentGalleryUrls } from '../lib/restaurantImages.js';
+import { fetchEstablishmentGalleryUrls, resolveReviewImageForDisplay } from '../lib/restaurantImages.js';
+import { formatRelativeReviewTime } from '../lib/utils.js';
 
 function buildCollagePanels(allUrls, offset) {
   const u = allUrls.filter(Boolean);
@@ -118,6 +120,10 @@ export function EstablishmentPage() {
   const [galleryModalOpen, setGalleryModalOpen] = useState(false);
   const [galleryUrls, setGalleryUrls] = useState([]);
   const [galleryLoading, setGalleryLoading] = useState(true);
+  /** @type {Record<string, { src: string; key: string }[]>} */
+  const [reviewPhotosByReviewId, setReviewPhotosByReviewId] = useState({});
+  /** @type {{ review: object; photos: { src: string; key: string }[]; index: number } | null} */
+  const [reviewPhotoLightbox, setReviewPhotoLightbox] = useState(null);
 
   const { panels, photoCount, galleryMaxOffset } = useMemo(
     () => buildCollagePanels(galleryUrls, galleryOffset),
@@ -167,6 +173,35 @@ export function EstablishmentPage() {
       window.removeEventListener('keydown', onKey);
     };
   }, [galleryModalOpen]);
+
+  const reviewLightboxOpen = reviewPhotoLightbox != null;
+  useEffect(() => {
+    if (!reviewLightboxOpen) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKey = (e) => {
+      if (e.key === 'Escape') {
+        setReviewPhotoLightbox(null);
+        return;
+      }
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        e.preventDefault();
+        setReviewPhotoLightbox((lb) => {
+          if (!lb || lb.photos.length <= 1) return lb;
+          const delta = e.key === 'ArrowLeft' ? -1 : 1;
+          return {
+            ...lb,
+            index: (lb.index + delta + lb.photos.length) % lb.photos.length,
+          };
+        });
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [reviewLightboxOpen]);
 
   useEffect(() => {
   async function fetchEstablishment() {
@@ -246,6 +281,50 @@ export function EstablishmentPage() {
     }
     fetchUsers();
   }, [establishment, reviews]);
+
+  useEffect(() => {
+    if (reviews.length === 0) {
+      setReviewPhotosByReviewId({});
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const ids = reviews.map((r) => r.review_id).filter(Boolean);
+      const { data, error } = await supabase
+        .from('review_images')
+        .select('image_id, review_id, storage_url, display_order')
+        .in('review_id', ids);
+      if (cancelled) return;
+      if (error) {
+        console.error('Error fetching review images:', error.message);
+        setReviewPhotosByReviewId({});
+        return;
+      }
+      const grouped = new Map();
+      for (const row of data ?? []) {
+        const rid = String(row.review_id);
+        if (!grouped.has(rid)) grouped.set(rid, []);
+        grouped.get(rid).push(row);
+      }
+      const next = {};
+      for (const [rid, rows] of grouped) {
+        rows.sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0));
+        const photos = [];
+        for (const r of rows) {
+          const src = await resolveReviewImageForDisplay(supabase, r.storage_url);
+          photos.push({
+            src,
+            key: String(r.image_id ?? `${rid}-${r.display_order}`),
+          });
+        }
+        next[rid] = photos.filter((p) => p.src);
+      }
+      setReviewPhotosByReviewId(next);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [reviews]);
 
   if (loading) {
     return (
@@ -387,7 +466,7 @@ export function EstablishmentPage() {
                   {Number(establishment.average_rating ?? establishment.rating ?? 0).toFixed(1)}
                 </span>
                 <span className="text-sm opacity-80">
-                  ({establishment.reviews ?? 0} reviews)
+                  ({establishment.total_reviews ?? establishment.reviews ?? reviews.length ?? 0} reviews)
                 </span>
               </div>
               <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/45 px-4 py-2 backdrop-blur-md">
@@ -447,13 +526,38 @@ export function EstablishmentPage() {
                         <div>
                           <h4 className="font-bold">{getDisplayName(users.find((u) => u.user_id === review.user_id))}</h4>
                           <p className={`text-sm ${dark ? 'text-gray-400' : 'text-gray-500'}`}>
-                            {new Date(review.updated_at).toLocaleDateString()}
+                            {formatRelativeReviewTime(review.updated_at)}
                           </p>
                         </div>
                       </div>
                       <p className={`leading-relaxed ${dark ? 'text-gray-300' : 'text-gray-700'}`}>
                         {review.body}
                       </p>
+                      {(() => {
+                        const photos = reviewPhotosByReviewId[String(review.review_id)] ?? [];
+                        if (photos.length === 0) return null;
+                        return (
+                          <div className="mt-4 grid grid-cols-3 gap-2 sm:max-w-md">
+                            {photos.map((p, photoIdx) => (
+                              <button
+                                key={p.key}
+                                type="button"
+                                className="block overflow-hidden rounded-lg ring-1 ring-black/10 transition hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#ffbf3e] dark:ring-white/10"
+                                onClick={() =>
+                                  setReviewPhotoLightbox({ review, photos, index: photoIdx })
+                                }
+                              >
+                                <img
+                                  src={p.src}
+                                  alt=""
+                                  className="aspect-square w-full object-cover"
+                                  loading="lazy"
+                                />
+                              </button>
+                            ))}
+                          </div>
+                        );
+                      })()}
                     </div>
                   ))}
                 </div>
@@ -487,6 +591,125 @@ export function EstablishmentPage() {
 
         </div>
       </main>
+
+      {reviewPhotoLightbox && establishment && (
+        <div
+          className="fixed inset-0 z-[110] flex flex-col bg-black sm:flex-row"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="review-photo-lightbox-title"
+        >
+          <button
+            type="button"
+            className="absolute inset-0 z-0 bg-black/95"
+            aria-label="Close photo viewer"
+            onClick={() => setReviewPhotoLightbox(null)}
+          />
+          <div className="relative z-10 flex h-full w-full min-h-0 flex-1 flex-col sm:flex-row">
+            <div className="relative flex min-h-[45vh] flex-1 items-center justify-center px-4 pb-4 pt-14 sm:min-h-0 sm:px-8 sm:pb-8 sm:pt-6">
+              <button
+                type="button"
+                className="absolute right-4 top-4 z-20 inline-flex items-center gap-2 rounded-full border border-white/20 bg-black/50 px-4 py-2 text-sm font-semibold text-white backdrop-blur-sm transition hover:bg-black/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#ffbf3e]"
+                onClick={() => setReviewPhotoLightbox(null)}
+              >
+                <X className="h-4 w-4" />
+                Close
+              </button>
+              {reviewPhotoLightbox.photos.length > 1 && (
+                <>
+                  <button
+                    type="button"
+                    className="absolute left-2 top-1/2 z-20 -translate-y-1/2 rounded-full border border-white/20 bg-black/50 p-3 text-white backdrop-blur-sm transition hover:bg-black/70 disabled:opacity-40 sm:left-4"
+                    aria-label="Previous photo"
+                    onClick={() =>
+                      setReviewPhotoLightbox((lb) =>
+                        lb && lb.photos.length > 1
+                          ? {
+                              ...lb,
+                              index: (lb.index - 1 + lb.photos.length) % lb.photos.length,
+                            }
+                          : lb,
+                      )
+                    }
+                  >
+                    <ChevronLeft className="h-7 w-7" />
+                  </button>
+                  <button
+                    type="button"
+                    className="absolute right-2 top-1/2 z-20 -translate-y-1/2 rounded-full border border-white/20 bg-black/50 p-3 text-white backdrop-blur-sm transition hover:bg-black/70 disabled:opacity-40 sm:right-4"
+                    aria-label="Next photo"
+                    onClick={() =>
+                      setReviewPhotoLightbox((lb) =>
+                        lb && lb.photos.length > 1
+                          ? {
+                              ...lb,
+                              index: (lb.index + 1) % lb.photos.length,
+                            }
+                          : lb,
+                      )
+                    }
+                  >
+                    <ChevronRight className="h-7 w-7" />
+                  </button>
+                </>
+              )}
+              <img
+                src={reviewPhotoLightbox.photos[reviewPhotoLightbox.index]?.src}
+                alt=""
+                className="relative z-10 max-h-[min(70vh,900px)] max-w-full object-contain sm:max-h-[min(85vh,920px)]"
+              />
+            </div>
+            <aside
+              className={`relative z-20 flex max-h-[38vh] w-full flex-col border-t sm:max-h-none sm:w-96 sm:max-w-[40vw] sm:border-l sm:border-t-0 ${
+                dark
+                  ? 'border-white/10 bg-[#14161f] text-white'
+                  : 'border-black/10 bg-white text-gray-900'
+              }`}
+            >
+              <div className="overflow-y-auto p-6">
+                <h2 id="review-photo-lightbox-title" className="text-xl font-bold leading-tight">
+                  Photos for {establishment.name}
+                </h2>
+                <p className={`mt-2 text-sm ${dark ? 'text-white/55' : 'text-gray-500'}`}>
+                  {reviewPhotoLightbox.index + 1} of {reviewPhotoLightbox.photos.length}
+                </p>
+                <div
+                  className={`mt-6 flex items-start gap-3 border-t pt-6 ${
+                    dark ? 'border-white/10' : 'border-gray-200'
+                  }`}
+                >
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#ffbf3e] text-sm font-bold text-black">
+                    {getInitials(
+                      getDisplayName(users.find((u) => u.user_id === reviewPhotoLightbox.review.user_id)),
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <p
+                      className={`font-semibold ${dark ? 'text-[#ffbf3e]' : 'text-[#0073bb]'}`}
+                    >
+                      {getDisplayName(users.find((u) => u.user_id === reviewPhotoLightbox.review.user_id))}
+                    </p>
+                    <p className={`text-sm ${dark ? 'text-white/50' : 'text-gray-500'}`}>
+                      {formatRelativeReviewTime(reviewPhotoLightbox.review.updated_at)}
+                    </p>
+                  </div>
+                </div>
+                {Number(reviewPhotoLightbox.review.helpful_count) > 0 && (
+                  <div
+                    className={`mt-5 flex items-center gap-2 text-sm ${dark ? 'text-white/65' : 'text-gray-600'}`}
+                  >
+                    <ThumbsUp className="h-4 w-4 shrink-0" aria-hidden />
+                    <span>
+                      {reviewPhotoLightbox.review.helpful_count} helpful
+                      {Number(reviewPhotoLightbox.review.helpful_count) === 1 ? '' : 's'}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </aside>
+          </div>
+        </div>
+      )}
 
       {galleryModalOpen && (
         <div
