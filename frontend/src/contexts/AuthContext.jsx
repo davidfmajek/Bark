@@ -42,12 +42,24 @@ export function AuthProvider({ children }) {
     await supabase.auth.signOut();
   };
 
+  const signInWithGoogle = async () => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${window.location.origin}/signin`,
+        queryParams: { prompt: 'select_account' },
+      },
+    });
+    if (error) throw error;
+  };
+
   const value = {
     user,
     session,
     loading,
     signIn,
     signUp,
+    signInWithGoogle,
     signOut,
     isAuthenticated: !!user,
   };

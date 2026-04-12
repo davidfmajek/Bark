@@ -1,7 +1,8 @@
 -- Sync new Supabase Auth users into public.users
--- Run this in Supabase Dashboard → SQL Editor (after schema.sql).
--- When someone signs up via the app, they are created in auth.users; this trigger
--- copies them into public.users so your app's user table stays in sync.
+-- Run in Supabase Dashboard → SQL Editor (after schema.sql).
+--
+-- Email/password sign-up sends affiliation in metadata on insert → public.users row is created.
+-- Google OAuth defers affiliation until step 2 → trigger skips public.users; the app inserts after step 2.
 
 CREATE OR REPLACE FUNCTION public.handle_new_auth_user()
 RETURNS TRIGGER
@@ -11,50 +12,91 @@ SET search_path = public
 AS $$
 DECLARE
   aff affiliation_enum;
+  v_display text;
 BEGIN
-  -- Map metadata affiliation to enum; if custom text (e.g. "Other" with free text), use 'Other'
+  -- Avoid RLS edge cases when inserting into public.users
+  PERFORM set_config('row_security', 'off', true);
+
+  IF NEW.email IS NULL OR btrim(NEW.email) = '' THEN
+    RAISE EXCEPTION 'public.users sync: auth user % has no email; cannot create profile', NEW.id
+      USING ERRCODE = '23502';
+  END IF;
+
+  IF (NEW.raw_user_meta_data->>'affiliation') IS NULL
+     OR btrim(COALESCE(NEW.raw_user_meta_data->>'affiliation', '')) = '' THEN
+    RETURN NEW;
+  END IF;
+
   BEGIN
     aff := (NEW.raw_user_meta_data->>'affiliation')::affiliation_enum;
   EXCEPTION
     WHEN invalid_text_representation OR OTHERS THEN
       aff := 'Other';
   END;
+  IF aff IS NULL THEN
+    aff := 'Other';
+  END IF;
+
+  v_display := left(
+    COALESCE(
+      NULLIF(TRIM(NEW.raw_user_meta_data->>'display_name'), ''),
+      NULLIF(TRIM(NEW.raw_user_meta_data->>'full_name'), ''),
+      NULLIF(TRIM(NEW.raw_user_meta_data->>'name'), ''),
+      split_part(NEW.email, '@', 1)
+    ),
+    255
+  );
 
   INSERT INTO public.users (user_id, email, password_hash, display_name, affiliation, is_admin, created_at, last_login)
   VALUES (
     NEW.id,
     NEW.email,
-    '[Supabase Auth]',  -- actual auth is in auth.users; do not duplicate password
-    COALESCE(NULLIF(TRIM(NEW.raw_user_meta_data->>'display_name'), ''), split_part(NEW.email, '@', 1)),
+    '[Supabase Auth]',
+    v_display,
     aff,
     FALSE,
     NOW(),
     NOW()
-  );
+  )
+  ON CONFLICT (user_id) DO UPDATE SET
+    email = EXCLUDED.email,
+    password_hash = EXCLUDED.password_hash,
+    display_name = COALESCE(NULLIF(EXCLUDED.display_name, ''), public.users.display_name),
+    affiliation = EXCLUDED.affiliation,
+    last_login = EXCLUDED.last_login;
+
   RETURN NEW;
 END;
 $$;
 
--- Drop if exists so re-running this file is safe
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 
+-- "PROCEDURE" is the traditional PG name for trigger functions (PG11–13); "FUNCTION" works on PG14+.
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW
-  EXECUTE FUNCTION public.handle_new_auth_user();
-
--- Optional: backfill existing auth users who signed up before this trigger existed.
--- Uncomment and run once in SQL Editor if you already have users in auth.users but not in public.users.
+  EXECUTE PROCEDURE public.handle_new_auth_user();
 
 INSERT INTO public.users (user_id, email, password_hash, display_name, affiliation, is_admin, created_at, last_login)
 SELECT
   id,
   email,
   '[Supabase Auth]',
-  COALESCE(NULLIF(TRIM(raw_user_meta_data->>'display_name'), ''), split_part(email, '@', 1)),
+  left(
+    COALESCE(
+      NULLIF(TRIM(raw_user_meta_data->>'display_name'), ''),
+      NULLIF(TRIM(raw_user_meta_data->>'full_name'), ''),
+      NULLIF(TRIM(raw_user_meta_data->>'name'), ''),
+      split_part(email, '@', 1)
+    ),
+    255
+  ),
   'Other',
   FALSE,
   created_at,
   updated_at
 FROM auth.users
+WHERE
+  raw_user_meta_data->>'affiliation' IS NOT NULL
+  AND btrim(COALESCE(raw_user_meta_data->>'affiliation', '')) <> ''
 ON CONFLICT (user_id) DO NOTHING;

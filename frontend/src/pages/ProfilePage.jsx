@@ -1,15 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../lib/supabase';
-
-const AFFILIATION_OPTIONS = [
-  { value: 'Student', label: 'Student' },
-  { value: 'Professor', label: 'Professor' },
-  { value: 'Prospective_Student', label: 'Prospective Student' },
-  { value: 'Incoming_Student', label: 'Incoming Student' },
-  { value: 'Parent', label: 'Parent' },
-  { value: 'Other', label: 'Other' },
-];
+import { AFFILIATION_OPTIONS } from '../lib/affiliations.js';
 
 export function ProfilePage() {
   const { theme } = useTheme();
@@ -150,7 +142,7 @@ export function ProfilePage() {
           {/* AFFILIATION DROPDOWN */}
           <div className="relative" ref={dropdownRef}>
             <label className={`text-xs font-black uppercase tracking-widest mb-1 block ${dark ? 'text-white/50' : 'text-black/60'}`}>
-              Affiliation
+              Affiliation to UMBC
             </label>
             <button
               type="button"
@@ -158,7 +150,9 @@ export function ProfilePage() {
               className={`${inputClass} flex items-center justify-between text-left hover:border-[#f5bf3e]`}
             >
               <span className={!affiliation ? (dark ? 'text-white/40' : 'text-black/40') : ''}>
-                {affiliation ? AFFILIATION_OPTIONS.find(o => o.value === affiliation)?.label : 'Select Affiliation'}
+                {affiliation
+                  ? (AFFILIATION_OPTIONS.find((o) => o.value === affiliation)?.label ?? affiliation)
+                  : 'Select affiliation'}
               </span>
               <svg className={`h-4 w-4 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />

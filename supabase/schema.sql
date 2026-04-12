@@ -1,24 +1,41 @@
 -- BARK database schema (PostgreSQL / Supabase)
+-- Safe to re-run: enums/tables/indexes use duplicate-safe patterns (existing objects are left as-is).
 
--- Enums
-CREATE TYPE affiliation_enum AS ENUM (
-  'Student', 'Professor', 'Incoming_Student', 'Staff', 'Other'
-);
+-- Enums (skip if already created — avoids ERROR: type "…" already exists)
+DO $$ BEGIN
+  CREATE TYPE affiliation_enum AS ENUM (
+    'Student', 'Professor', 'Staff', 'Alumni', 'Other'
+  );
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE TYPE category_enum AS ENUM (
-  'Dining_Hall', 'Cafe', 'Restaurant', 'Convenience'
-);
+DO $$ BEGIN
+  CREATE TYPE category_enum AS ENUM (
+    'Dining_Hall', 'Cafe', 'Restaurant', 'Convenience'
+  );
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE TYPE day_of_week_enum AS ENUM (
-  'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'
-);
+DO $$ BEGIN
+  CREATE TYPE day_of_week_enum AS ENUM (
+    'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'
+  );
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE TYPE report_status_enum AS ENUM (
-  'Pending', 'Reviewed', 'Dismissed', 'Removed'
-);
+DO $$ BEGIN
+  CREATE TYPE report_status_enum AS ENUM (
+    'Pending', 'Reviewed', 'Dismissed', 'Removed'
+  );
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
 
 -- Tables (lowercase names; diagram uses uppercase for display)
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
   user_id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   email           VARCHAR(255) NOT NULL UNIQUE,
   password_hash   VARCHAR(255) NOT NULL,
@@ -29,7 +46,7 @@ CREATE TABLE users (
   last_login      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE establishments (
+CREATE TABLE IF NOT EXISTS establishments (
   establishment_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name            VARCHAR(255) NOT NULL,
   description     TEXT,
@@ -44,7 +61,7 @@ CREATE TABLE establishments (
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE hours (
+CREATE TABLE IF NOT EXISTS hours (
   hours_id        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   establishment_id UUID NOT NULL REFERENCES establishments (establishment_id) ON DELETE CASCADE,
   day_of_week     day_of_week_enum NOT NULL,
@@ -54,7 +71,7 @@ CREATE TABLE hours (
   UNIQUE (establishment_id, day_of_week)
 );
 
-CREATE TABLE reviews (
+CREATE TABLE IF NOT EXISTS reviews (
   review_id       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id         UUID NOT NULL REFERENCES users (user_id) ON DELETE CASCADE,
   establishment_id UUID NOT NULL REFERENCES establishments (establishment_id) ON DELETE CASCADE,
@@ -66,7 +83,7 @@ CREATE TABLE reviews (
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE review_images (
+CREATE TABLE IF NOT EXISTS review_images (
   image_id        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   review_id       UUID NOT NULL REFERENCES reviews (review_id) ON DELETE CASCADE,
   storage_url     VARCHAR(512) NOT NULL,
@@ -77,16 +94,16 @@ CREATE TABLE review_images (
 );
 
 -- At most 3 images per review (enforced by app or trigger)
-CREATE UNIQUE INDEX idx_review_images_per_review
+CREATE UNIQUE INDEX IF NOT EXISTS idx_review_images_per_review
   ON review_images (review_id, display_order);
 
-CREATE TABLE review_tags (
+CREATE TABLE IF NOT EXISTS review_tags (
   tag_id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   review_id       UUID NOT NULL REFERENCES reviews (review_id) ON DELETE CASCADE,
   tag             VARCHAR(64) NOT NULL
 );
 
-CREATE TABLE helpful_votes (
+CREATE TABLE IF NOT EXISTS helpful_votes (
   vote_id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   review_id       UUID NOT NULL REFERENCES reviews (review_id) ON DELETE CASCADE,
   user_id         UUID NOT NULL REFERENCES users (user_id) ON DELETE CASCADE,
@@ -94,7 +111,7 @@ CREATE TABLE helpful_votes (
   UNIQUE (review_id, user_id)
 );
 
-CREATE TABLE reports (
+CREATE TABLE IF NOT EXISTS reports (
   report_id       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   review_id       UUID NOT NULL REFERENCES reviews (review_id) ON DELETE CASCADE,
   reporter_id     UUID NOT NULL REFERENCES users (user_id) ON DELETE CASCADE,
