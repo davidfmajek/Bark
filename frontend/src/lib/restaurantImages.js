@@ -5,6 +5,7 @@ const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'webp', 'heic', 'heif'];
 const HEROES_FOLDER = 'heroes';
 const LOGOS_FOLDER = 'logos';
 const IMAGES_FOLDER = 'images';
+const STORAGE_OBJECT_PATH_MARKER = '/storage/v1/object/';
 
 const supabasePublicStorageBase = STORAGE_BUCKET && SUPABASE_URL
   ? `${SUPABASE_URL}/storage/v1/object/public/${STORAGE_BUCKET}`
@@ -148,7 +149,7 @@ export function getRestaurantImageCandidates(restaurant) {
   return deduped.flatMap((candidate) => getPathOrUrlCandidateUrls(null, candidate));
 }
 
-export function getRestaurantCardImageCandidates(restaurant) {
+export function getRestaurantCardImageCandidates(restaurant, supabase = null) {
   const candidates = [];
   const id = String(restaurant?.establishment_id ?? '').trim();
   const explicitPaths = [restaurant?.logo_path, restaurant?.header_image_path, restaurant?.header_image];
@@ -173,7 +174,15 @@ export function getRestaurantCardImageCandidates(restaurant) {
   }
 
   const deduped = [...new Set(candidates)];
-  return deduped.flatMap((candidate) => getPathOrUrlCandidateUrls(null, candidate));
+  return deduped.flatMap((candidate) => getPathOrUrlCandidateUrls(supabase, candidate));
+}
+
+/** First card image URL that actually returns an image (avoids dozens of failed <img> loads on the grid). */
+export async function resolveRestaurantCardImageUrl(supabase, restaurant) {
+  const urls = getRestaurantCardImageCandidates(restaurant, supabase);
+  if (urls.length === 0) return null;
+  const found = await probePublicImageUrlsInOrder(urls, 1);
+  return found[0] ?? null;
 }
 
 // First candidate URL only — often 404. Use fetchCarouselSlidesFromStorage.
@@ -213,22 +222,148 @@ function getConventionalStoragePath(establishmentId, heroesSet, logosSet) {
   return null;
 }
 
-// True if the URL loads in an Image() (12s max).
-function probePublicImageUrl(url) {
-  return new Promise((resolve) => {
-    if (!url) return resolve(false);
-    const img = new Image();
-    const t = setTimeout(() => resolve(false), 12000);
-    img.onload = () => {
-      clearTimeout(t);
-      resolve(true);
-    };
-    img.onerror = () => {
-      clearTimeout(t);
-      resolve(false);
-    };
-    img.src = url;
+const PROBE_FETCH_TIMEOUT_MS = 10_000;
+/** Avoid opening dozens of simultaneous connections to Storage / CDNs. */
+const PROBE_MAX_CONCURRENT = 8;
+
+function isImageContentType(headerValue) {
+  return /^image\//i.test(String(headerValue ?? '').trim());
+}
+
+/** Supabase Storage public URLs often respond 400 to HEAD; use a 1-byte ranged GET instead. */
+function isSupabaseStorageObjectUrl(url) {
+  try {
+    return new URL(url).pathname.includes(STORAGE_OBJECT_PATH_MARKER);
+  } catch {
+    return false;
+  }
+}
+
+/** Drop the body after headers are read so ranged GET does not retain large payloads when Range is ignored. */
+function cancelResponseBody(res) {
+  try {
+    const body = res.body;
+    if (body && typeof body.cancel === 'function') {
+      void body.cancel();
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+function responseLooksLikeImage(res) {
+  if (res.status === 404) return false;
+  const okStatus =
+    res.ok || res.status === 200 || res.status === 206 || res.status === 304;
+  if (!okStatus) return false;
+  return isImageContentType(res.headers.get('content-type'));
+}
+
+/**
+ * True if the URL responds with an image Content-Type. Avoids `new Image()` (CORB on error bodies).
+ * For Supabase Storage we skip HEAD (many projects return 400) and use GET + Range: bytes=0-0.
+ */
+async function probePublicImageUrl(url) {
+  if (!url) return false;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), PROBE_FETCH_TIMEOUT_MS);
+
+  const fetchRangedGet = () =>
+    fetch(url, {
+      method: 'GET',
+      mode: 'cors',
+      credentials: 'omit',
+      headers: { Range: 'bytes=0-0' },
+      signal: controller.signal,
+    });
+
+  const fetchPlainGet = () =>
+    fetch(url, {
+      method: 'GET',
+      mode: 'cors',
+      credentials: 'omit',
+      signal: controller.signal,
+    });
+
+  try {
+    let res;
+    if (isSupabaseStorageObjectUrl(url)) {
+      res = await fetchRangedGet();
+      // Some objects / gateways return 400 or 416 for Range; plain GET still returns headers + we cancel the body.
+      if (res.status === 400 || res.status === 416) {
+        cancelResponseBody(res);
+        res = await fetchPlainGet();
+      }
+      const ok = responseLooksLikeImage(res);
+      cancelResponseBody(res);
+      return ok;
+    }
+
+    res = await fetch(url, {
+      method: 'HEAD',
+      mode: 'cors',
+      credentials: 'omit',
+      signal: controller.signal,
+    });
+
+    if (res.status === 400 || res.status === 405 || res.status === 501) {
+      res = await fetchRangedGet();
+      const ok = responseLooksLikeImage(res);
+      cancelResponseBody(res);
+      return ok;
+    }
+
+    return responseLooksLikeImage(res);
+  } catch (err) {
+    if (import.meta.env.DEV && err?.name !== 'AbortError') {
+      console.warn('[restaurantImages] probePublicImageUrl:', url.slice(0, 120), err);
+    }
+    return false;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+/**
+ * Run async work on `items` with at most `limit` in flight (stable order for indexing).
+ */
+async function runWithConcurrency(items, limit, worker) {
+  if (items.length === 0) return;
+  const n = Math.min(Math.max(1, limit), items.length);
+  let index = 0;
+
+  async function runWorker() {
+    for (;;) {
+      const i = index;
+      index += 1;
+      if (i >= items.length) return;
+      await worker(items[i], i);
+    }
+  }
+
+  await Promise.all(Array.from({ length: n }, runWorker));
+}
+
+/** Probe ordered URLs with bounded concurrency; return up to `max` hits, preserving order (deduped). */
+async function probePublicImageUrlsInOrder(urls, max) {
+  const list = urls.filter(Boolean);
+  if (list.length === 0 || max <= 0) return [];
+  const unique = [...new Set(list)];
+  const okByUrl = new Map();
+
+  await runWithConcurrency(unique, PROBE_MAX_CONCURRENT, async (u) => {
+    okByUrl.set(u, await probePublicImageUrl(u));
   });
+
+  const out = [];
+  const seen = new Set();
+  for (const u of list) {
+    if (out.length >= max) break;
+    if (!okByUrl.get(u) || seen.has(u)) continue;
+    seen.add(u);
+    out.push(u);
+  }
+  return out;
 }
 
 export const MAX_HOME_CAROUSEL_SLIDES = 24; // home carousel slide limit
@@ -293,17 +428,13 @@ async function fetchCarouselSlidesByProbing(establishments) {
   for (const e of establishments) {
     if (slides.length >= MAX_HOME_CAROUSEL_SLIDES) break;
     const candidates = getRestaurantImageCandidates(e);
-    for (const url of candidates) {
-      if (!url) continue;
-      if (await probePublicImageUrl(url)) {
-        slides.push({
-          key: String(e.establishment_id),
-          imageSrc: url,
-          alt: e.name ? `${e.name}` : 'Restaurant photo',
-        });
-        break;
-      }
-    }
+    const first = await probePublicImageUrlsInOrder(candidates, 1);
+    if (first.length === 0) continue;
+    slides.push({
+      key: String(e.establishment_id),
+      imageSrc: first[0],
+      alt: e.name ? `${e.name}` : 'Restaurant photo',
+    });
   }
   return slides;
 }
@@ -393,15 +524,16 @@ export async function fetchEstablishmentGalleryUrls(supabase, establishment) {
     establishment && supabase && id ? await fetchReviewImageUrlsForEstablishment(supabase, id) : [];
 
   if (!establishment || !supabase || !bucket || !id) {
-    const brandEarly = [];
     const explicit = getPathOrUrlCandidateUrls(supabase, establishment?.header_image_path);
-    if (explicit.length > 0 && (await probePublicImageUrl(explicit[0]))) {
-      brandEarly.push(explicit[0]);
-    }
+    const ex0 = explicit[0];
     const hi = establishment?.header_image;
-    if (hi && typeof hi === 'string' && !brandEarly.includes(hi) && (await probePublicImageUrl(hi))) {
-      brandEarly.unshift(hi);
-    }
+    const [okEx, okHi] = await Promise.all([
+      ex0 ? probePublicImageUrl(ex0) : Promise.resolve(false),
+      hi && typeof hi === 'string' ? probePublicImageUrl(hi) : Promise.resolve(false),
+    ]);
+    const brandEarly = [];
+    if (okEx && ex0) brandEarly.push(ex0);
+    if (okHi && hi && typeof hi === 'string' && !brandEarly.includes(hi)) brandEarly.unshift(hi);
     if (brandEarly.length > 0 || reviewUrls.length > 0) {
       return mergeBrandThenReviewUrls(brandEarly, reviewUrls, max);
     }
@@ -433,8 +565,8 @@ export async function fetchEstablishmentGalleryUrls(supabase, establishment) {
   // list() often returns [] without Storage SELECT policies — still try public object URLs.
   if (!listedMatchForThisPlace) {
     const extRe = new RegExp(`\\.(${IMAGE_EXTENSIONS.join('|')})$`, 'i');
+    const toProbe = [];
     for (const p of orderedBrandCandidatePathsForId(id)) {
-      if (brandFromBucket.length >= max) break;
       const inHeroOrLogo =
         p.startsWith(`${HEROES_FOLDER}/`) ||
         p.startsWith(`${LOGOS_FOLDER}/`) ||
@@ -444,17 +576,25 @@ export async function fetchEstablishmentGalleryUrls(supabase, establishment) {
       if (!inHeroOrLogo && !rootImage) continue;
       const { data: pub } = supabase.storage.from(bucket).getPublicUrl(p);
       const url = pub?.publicUrl;
-      if (!url || brandFromBucket.includes(url)) continue;
-      if (await probePublicImageUrl(url)) brandFromBucket.push(url);
+      if (!url || toProbe.includes(url)) continue;
+      toProbe.push(url);
     }
+    const found = await probePublicImageUrlsInOrder(toProbe, max);
+    brandFromBucket.push(...found);
   }
 
   const explicitLogo = getPathOrUrlCandidateUrls(supabase, establishment?.logo_path);
   const explicitHeader = getPathOrUrlCandidateUrls(supabase, establishment?.header_image_path);
-  for (const url of [explicitLogo[0], explicitHeader[0]].filter(Boolean)) {
+  const explicitCandidates = [explicitLogo[0], explicitHeader[0]].filter(
+    (u) => u && !brandFromBucket.includes(u),
+  );
+  const explicitOk = await probePublicImageUrlsInOrder(
+    explicitCandidates,
+    Math.max(0, max - brandFromBucket.length),
+  );
+  for (const u of explicitOk) {
     if (brandFromBucket.length >= max) break;
-    if (brandFromBucket.includes(url)) continue;
-    if (await probePublicImageUrl(url)) brandFromBucket.push(url);
+    brandFromBucket.push(u);
   }
 
   const hi = establishment.header_image;
@@ -468,11 +608,6 @@ export async function fetchEstablishmentGalleryUrls(supabase, establishment) {
   }
 
   const candidates = getEstablishmentGalleryUrls(establishment);
-  const brandFallback = [];
-  for (const url of candidates) {
-    if (brandFallback.length >= max) break;
-    if (!url || brandFallback.includes(url)) continue;
-    if (await probePublicImageUrl(url)) brandFallback.push(url);
-  }
+  const brandFallback = await probePublicImageUrlsInOrder(candidates, max);
   return mergeBrandThenReviewUrls(brandFallback, reviewUrls, max);
 }

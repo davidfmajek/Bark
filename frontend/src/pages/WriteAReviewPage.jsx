@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../lib/supabase';
-import { getRestaurantCardImageCandidates, REVIEW_STORAGE_BUCKET } from '../lib/restaurantImages';
+import { resolveRestaurantCardImageUrl, REVIEW_STORAGE_BUCKET } from '../lib/restaurantImages';
 
 const MIN_REVIEW_CHARS = 50;
 const MAX_REVIEW_IMAGES = 3;
@@ -80,37 +80,30 @@ function RatingStars({ rating, className = 'h-4 w-4' }) {
   );
 }
 
-function EstablishmentCardImage({ 
-  establishment, 
-  dark, 
-  imageSourceIndexes, 
-  setImageSourceIndexes, 
-  imageLoadErrors, 
-  setImageLoadErrors 
-}) {
-  const imageCandidates = getRestaurantCardImageCandidates(establishment);
-  const imageCandidateIndex = imageSourceIndexes[establishment.establishment_id] ?? 0;
-  const hasImage = !imageLoadErrors[establishment.establishment_id] && imageCandidateIndex < imageCandidates.length;
-  const imageSrc = hasImage ? imageCandidates[imageCandidateIndex] : null;
+function EstablishmentCardImage({ establishment, dark }) {
+  const [imageSrc, setImageSrc] = useState(undefined);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const url = await resolveRestaurantCardImageUrl(supabase, establishment);
+      if (!cancelled) setImageSrc(url);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [establishment?.establishment_id]);
 
   return (
     <div className="relative h-full min-h-[5rem] w-24 shrink-0 overflow-hidden sm:w-28">
-      {!imageSrc ? (
+      {imageSrc === undefined ? (
+        <div className={`flex h-full w-full items-center justify-center ${dark ? 'bg-white/5' : 'bg-black/5'}`} aria-hidden>
+          <Loader2 className="h-6 w-6 animate-spin text-[#ffbf3e]/70" />
+        </div>
+      ) : !imageSrc ? (
         <div className={`h-full w-full ${dark ? 'bg-white/5' : 'bg-black/5'}`} aria-hidden />
       ) : (
-        <img
-          alt=""
-          src={imageSrc}
-          className="h-full w-full object-cover"
-          onError={() => {
-            const nextIndex = imageCandidateIndex + 1;
-            if (nextIndex < imageCandidates.length) {
-              setImageSourceIndexes((prev) => ({ ...prev, [establishment.establishment_id]: nextIndex }));
-            } else {
-              setImageLoadErrors((prev) => ({ ...prev, [establishment.establishment_id]: true }));
-            }
-          }}
-        />
+        <img alt="" src={imageSrc} className="h-full w-full object-cover" />
       )}
     </div>
   );
@@ -122,10 +115,6 @@ function FindBusinessStep({
   loading,
   errorMessage,
   navigate,
-  imageSourceIndexes,
-  setImageSourceIndexes,
-  imageLoadErrors,
-  setImageLoadErrors,
 }) {
   const [query, setQuery] = useState('');
   const [locationFilter, setLocationFilter] = useState('');
@@ -247,14 +236,7 @@ function FindBusinessStep({
                     }
                   }}
                 >
-                  <EstablishmentCardImage
-                    establishment={e}
-                    dark={dark}
-                    imageSourceIndexes={imageSourceIndexes}
-                    setImageSourceIndexes={setImageSourceIndexes}
-                    imageLoadErrors={imageLoadErrors}
-                    setImageLoadErrors={setImageLoadErrors}
-                  />
+                  <EstablishmentCardImage establishment={e} dark={dark} />
                   <div className="flex min-w-0 flex-1 flex-col justify-center gap-2 p-4 pr-10">
                     <p className="truncate font-bold">{e.name}</p>
                     <p className={`text-sm ${dark ? 'text-white/60' : 'text-black/55'}`}>Do you recommend this place?</p>
@@ -579,8 +561,6 @@ export function WriteAReviewPage() {
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
-  const [imageSourceIndexes, setImageSourceIndexes] = useState({});
-  const [imageLoadErrors, setImageLoadErrors] = useState({});
   const [recentReviews, setRecentReviews] = useState([]);
   const [reviewsLoading, setReviewsLoading] = useState(false);
 
@@ -853,10 +833,6 @@ export function WriteAReviewPage() {
             loading={loading}
             errorMessage={errorMessage}
             navigate={navigate}
-            imageSourceIndexes={imageSourceIndexes}
-            setImageSourceIndexes={setImageSourceIndexes}
-            imageLoadErrors={imageLoadErrors}
-            setImageLoadErrors={setImageLoadErrors}
           />
         ) : (
           <ReviewFormStep

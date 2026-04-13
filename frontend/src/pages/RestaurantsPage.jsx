@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { supabase } from '../lib/supabase.js'; 
+import { supabase } from '../lib/supabase.js';
 import { Clock, MapPin, ArrowRight, Star, StarHalf, Loader2, FilePenLine } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from "../contexts/AuthContext"; // 1. Added Auth Context
-import { getRestaurantCardImageCandidates } from '../lib/restaurantImages';
+import { resolveRestaurantCardImageUrl } from '../lib/restaurantImages';
 
 export function RestaurantsPage() {
   const { theme } = useTheme();
@@ -15,8 +15,8 @@ export function RestaurantsPage() {
 
   const [restaurants, setRestaurants] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [imageLoadErrors, setImageLoadErrors] = useState({});
-  const [imageSourceIndexes, setImageSourceIndexes] = useState({});
+  /** Resolved public image URL per establishment, or null if none; undefined while resolving. */
+  const [cardImageByEstablishmentId, setCardImageByEstablishmentId] = useState({});
 
   useEffect(() => {
     async function fetchRestaurants() {
@@ -39,12 +39,43 @@ export function RestaurantsPage() {
     fetchRestaurants();
   }, []);
 
-  const restaurantsToShow =
-    filterEstablishmentId
-      ? restaurants.filter(
-          (r) => String(r.establishment_id) === String(filterEstablishmentId),
-        )
-      : restaurants;
+  const restaurantsToShow = useMemo(
+    () =>
+      filterEstablishmentId
+        ? restaurants.filter(
+            (r) => String(r.establishment_id) === String(filterEstablishmentId),
+          )
+        : restaurants,
+    [restaurants, filterEstablishmentId],
+  );
+
+  const cardImageResolveKey = useMemo(
+    () => restaurantsToShow.map((r) => String(r.establishment_id)).join('|'),
+    [restaurantsToShow],
+  );
+
+  useEffect(() => {
+    if (restaurantsToShow.length === 0) {
+      setCardImageByEstablishmentId({});
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const entries = await Promise.all(
+        restaurantsToShow.map(async (r) => {
+          const url = await resolveRestaurantCardImageUrl(supabase, r);
+          return [String(r.establishment_id), url];
+        }),
+      );
+      if (!cancelled) {
+        setCardImageByEstablishmentId(Object.fromEntries(entries));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- resolve when visible establishment ids change; `restaurantsToShow` identity can churn without id changes
+  }, [cardImageResolveKey]);
 
   return (
     <div className={`min-h-[calc(100vh-3.5rem)] ${dark ? 'text-white' : 'text-black'}`}>
@@ -68,10 +99,7 @@ export function RestaurantsPage() {
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
             {restaurantsToShow.map((restaurant) => {
-              const imageCandidates = getRestaurantCardImageCandidates(restaurant);
-              const imageCandidateIndex = imageSourceIndexes[restaurant.establishment_id] ?? 0;
-              const hasImage = !imageLoadErrors[restaurant.establishment_id] && imageCandidateIndex < imageCandidates.length;
-              const imageSrc = hasImage ? imageCandidates[imageCandidateIndex] : null;
+              const imageSrc = cardImageByEstablishmentId[String(restaurant.establishment_id)];
               
               return (
                 <div key={restaurant.establishment_id} className="max-w-5xl mx-auto w-full">
@@ -81,7 +109,14 @@ export function RestaurantsPage() {
                   >
                     {/* Image Section */}
                     <div className="aspect-[16/9] w-full overflow-hidden sm:aspect-[21/9]">
-                      {!imageSrc ? (
+                      {imageSrc === undefined ? (
+                        <div
+                          aria-hidden
+                          className={`flex h-full w-full items-center justify-center ${dark ? 'bg-[#111827]' : 'bg-gray-200'}`}
+                        >
+                          <Loader2 className="h-8 w-8 animate-spin text-[#ffbf3e]/80" />
+                        </div>
+                      ) : !imageSrc ? (
                         <div
                           aria-label={`${restaurant.name} placeholder image`}
                           className={`h-full w-full ${dark ? 'bg-[#111827]' : 'bg-gray-200'}`}
@@ -91,21 +126,6 @@ export function RestaurantsPage() {
                           alt={restaurant.name}
                           src={imageSrc}
                           className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110"
-                          onError={() => {
-                            const nextIndex = imageCandidateIndex + 1;
-                            if (nextIndex < imageCandidates.length) {
-                              setImageSourceIndexes((prev) => ({
-                                ...prev,
-                                [restaurant.establishment_id]: nextIndex,
-                              }));
-                              return;
-                            }
-
-                            setImageLoadErrors((prev) => ({
-                              ...prev,
-                              [restaurant.establishment_id]: true,
-                            }));
-                          }}
                         />
                       )}
                       <div className={`absolute inset-0 bg-gradient-to-t ${dark ? 'from-[#0f1219] via-[#0f1219]/40' : 'from-black/70 via-black/20'} to-transparent`} />
