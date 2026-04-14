@@ -108,12 +108,13 @@ export function EstablishmentPage() {
   const { slug } = useParams();
   const navigate = useNavigate();
   const { theme } = useTheme();
-  const { isAuthenticated } = useAuth();
+  const { user, isAuthenticated } = useAuth();
   const dark = theme === 'dark';
 
   const [establishment, setEstablishment] = useState(null);
   const [users, setUsers] = useState([]);
   const [reviews, setReviews] = useState([]);
+  const [likeButton, setLikeButton] = useState([]);
   const [loading, setLoading] = useState(true);
   const [galleryOffset, setGalleryOffset] = useState(0);
   const [panelBroken, setPanelBroken] = useState([false, false, false]);
@@ -258,7 +259,7 @@ export function EstablishmentPage() {
       }
   }
   fetchReviews();
-  }, [establishment]);
+  }, [establishment?.establishment_id]);
 
   useEffect(() => {
     async function fetchUsers() {
@@ -280,7 +281,8 @@ export function EstablishmentPage() {
         }
     }
     fetchUsers();
-  }, [establishment, reviews]);
+    //this has to be reviews.length or else it will flicker a loading screen
+  }, [establishment?.establishment_id, reviews.length]);
 
   useEffect(() => {
     if (reviews.length === 0) {
@@ -325,7 +327,48 @@ export function EstablishmentPage() {
       cancelled = true;
     };
   }, [reviews]);
+  useEffect(() => {
+    async function fetchHelpfulVotes() {
+      if (reviews.length > 0) {
+        try {
+          setLoading(true);
+          const { data, error } = await supabase
+            .from("helpful_votes")
+            .select("review_id, user_id")
+            .in("review_id", reviews.map((r) => r.review_id))
+            .eq("user_id", user.id);
+          if (error) {
+            console.error("Error fetching helpful votes: ", error.message);
+            setLikeButton(new Array(reviews.length).fill(false));
+            return;
+          }
+          const likeToggles = new Array(reviews.length).fill(false);
+          likeToggles.forEach((_, idx) => {
+            const reviewID = reviews[idx].review_id;
+            likeToggles[idx] = data.some((like) => like.review_id == reviewID && like.user_id == user.id);
+          });
 
+          setLikeButton(likeToggles);
+        }
+        catch (error) {
+          console.error("Error fetching helpful votes: ", error.message);
+        }
+        finally {
+          setLoading(false);
+        }
+      }
+    }
+    
+    fetchHelpfulVotes();
+  }, [establishment?.establishment_id, reviews.length]);
+
+  useEffect(() => {
+    console.log("reviews changed:", reviews);
+  }, [reviews.length]);
+
+  useEffect(() => {
+    console.log("likeButton state changed:", likeButton);
+  }, [likeButton]);
   if (loading) {
     return (
       <div className="flex h-screen items-center justify-center">
@@ -517,7 +560,7 @@ export function EstablishmentPage() {
               )}
               {reviews.length > 0 && (
                 <div className="space-y-6">
-                  {reviews.map((review) => (
+                  {reviews.map((review, reviewIdx) => (
                     <div key={review.review_id} className={`p-6 rounded-xl ${dark ? 'bg-gray-900/40' : 'bg-gray-100'}`}>
                       <div className="flex items-center gap-4 mb-4">
                         <div className="w-12 h-12 rounded-full bg-[#ffbf3e] flex items-center justify-center text-white font-bold">
@@ -558,6 +601,68 @@ export function EstablishmentPage() {
                           </div>
                         );
                       })()}
+                    <button 
+                      type="button"
+                      onClick={async () => {
+                        const isLiked = likeButton[reviewIdx];
+                        const newButtons = likeButton.map((b, bIdx) => bIdx === reviewIdx ? !b : b);
+                        setLikeButton(newButtons);
+
+                        setReviews(prevReviews => {
+                          return prevReviews.map((r, rIdx) => {
+                            if (rIdx == reviewIdx) {
+                              return {
+                                ...r,
+                                helpful_count: isLiked ? Number(r.helpful_count) - 1 : Number(r.helpful_count) + 1
+                              };
+                            }
+                            else {
+                              return r;
+                            }
+                          });
+                        });
+
+                        try {
+                          if (isLiked == true) {
+                            // delete the like from helpful_votes table if the current user has liked this post already
+                            await supabase
+                              .from("helpful_votes")
+                              .delete()
+                              .eq("review_id", review.review_id)
+                              .eq("user_id", user.id)
+                            // update the like counter in the reviews table
+                            await supabase
+                              .from("reviews")
+                              .update({ helpful_count: Number(review.helpful_count) - 1 })
+                              .eq("review_id", review.review_id)
+                          } else {
+                            // create a row in the helpful_votes table to show that the current user has liked this review
+                            await supabase
+                              .from("helpful_votes")
+                              .insert({
+                                  review_id: review.review_id,
+                                  user_id: user.id
+                              })
+                            // update like counter in reviews table
+                            await supabase
+                              .from("reviews")
+                              .update({ helpful_count: Number(review.helpful_count) + 1 })
+                              .eq("review_id", review.review_id)
+                          }
+                        }
+                        catch (error) {
+                          console.error("Error updating like status:", error.message);
+                        }
+                      }} 
+                      className={`flex items-center justify-center rounded-lg ${likeButton[reviewIdx] == true ? 'text-[#ffbf3e] hover:text-[#d08e0f]' : 'text-gray-400 hover:text-gray-500'} transition hover:scale-105 active:scale-95 mt-4`}
+                    >
+                      <ThumbsUp className="w-5 h-5" />
+                    </button>
+                    <p>
+                      <span className="text-sm text-gray-500 flex items-center gap-1 mt-2">
+                        {review.helpful_count} like{review.helpful_count == 1 ? '' : 's'}
+                      </span>
+                    </p>
                     </div>
                   ))}
                 </div>
