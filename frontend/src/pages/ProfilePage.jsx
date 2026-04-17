@@ -7,18 +7,21 @@ export function ProfilePage() {
   const { theme } = useTheme();
   const dark = theme === 'dark';
 
-  // Form State
+  // --- Form & User State ---
   const [loading, setLoading] = useState(true);
   const [displayName, setDisplayName] = useState('');
   const [affiliation, setAffiliation] = useState('');
   const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState(''); // NEW STATE
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [userProvider, setUserProvider] = useState('email');
   const [message, setMessage] = useState({ type: '', text: '' });
 
-  // Modal State
+  // --- Modal State ---
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
 
-  // Custom Dropdown State
+  // --- Dropdown Logic ---
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef(null);
 
@@ -30,20 +33,28 @@ export function ProfilePage() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // --- Initial Data Fetch ---
   useEffect(() => {
     async function getProfile() {
       try {
         setLoading(true);
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
-          const { data } = await supabase.from('users').select('display_name, affiliation').eq('user_id', user.id).single();
+          // Identify if they used Google or Email
+          setUserProvider(user.app_metadata.provider || 'email');
+          
+          const { data } = await supabase.from('users')
+            .select('display_name, affiliation')
+            .eq('user_id', user.id)
+            .single();
+            
           if (data) {
             setDisplayName(data.display_name || '');
             setAffiliation(data.affiliation || '');
           }
         }
       } catch (error) {
-        console.error('Error loading user data:', error);
+        console.error('Error loading profile:', error);
       } finally {
         setLoading(false);
       }
@@ -51,129 +62,137 @@ export function ProfilePage() {
     getProfile();
   }, []);
 
-  // 1. Initial form validation & trigger
-  function handleSubmitTrigger(e) {
+  // --- Handle Form Submit ---
+  async function handleUpdate(e) {
     e.preventDefault();
     setMessage({ type: '', text: '' });
 
-    // Validation: Check if passwords match
-    if (password !== confirmPassword) {
-      setMessage({ type: 'error', text: 'Passwords do not match. Please re-type your new password.' });
-      return;
-    }
-
-    // Validation: Enforce minimum length if a password is being set
-    if (password && password.length < 6) {
-        setMessage({ type: 'error', text: 'Password must be at least 6 characters long.' });
+    // Validation: If they touch the password fields
+    if (password || confirmPassword) {
+      if (password.length < 6) {
+        setMessage({ type: 'error', text: 'New password must be at least 6 characters.' });
         return;
+      }
+      if (password !== confirmPassword) {
+        setMessage({ type: 'error', text: 'Passwords do not match.' });
+        return;
+      }
     }
 
     setShowConfirmModal(true);
   }
 
-  // 2. The actual update logic
+  // --- Confirm and Save Profile/Password ---
   async function confirmUpdate() {
     setShowConfirmModal(false);
     setLoading(true);
-    setMessage({ type: '', text: '' });
-
     try {
       const { data: { user } } = await supabase.auth.getUser();
       
-      await supabase.auth.updateUser({ data: { display_name: displayName } });
+      // 1. Update Password (works for both Email and Google linked accounts)
+      if (password) {
+        const { error: pwdError } = await supabase.auth.updateUser({ password });
+        if (pwdError) throw pwdError;
+      }
       
-      if (password) await supabase.auth.updateUser({ password });
-      
-      const { error: dbError } = await supabase
-        .from('users')
-        .update({ display_name: displayName, affiliation: affiliation })
+      // 2. Update Public Profile
+      const { error: profileError } = await supabase.from('users')
+        .update({ display_name: displayName, affiliation })
         .eq('user_id', user.id);
 
-      if (dbError) throw dbError;
+      if (profileError) throw profileError;
+
+      setMessage({ type: 'success', text: 'Profile updated successfully!' });
       
-      setMessage({ type: 'success', text: 'Success! Your profile has been updated.' });
+      // Clear password fields on success
       setPassword('');
-      setConfirmPassword(''); // Clear the confirmation field
-    } catch (error) {
-      setMessage({ type: 'error', text: error.message });
+      setConfirmPassword('');
+    } catch (err) {
+      setMessage({ type: 'error', text: err.message });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // --- Delete Account Logic ---
+  async function handleDeleteAccount() {
+    // Check text confirmation case-insensitively
+    if (deleteConfirmText.toUpperCase() !== 'DELETE ACCOUNT') return;
+
+    setLoading(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // 1. Storage Cleanup (Deleting review images)
+      const { data: reviews } = await supabase
+        .from('reviews')
+        .select('review_id')
+        .eq('user_id', user.id);
+
+      if (reviews && reviews.length > 0) {
+        for (const review of reviews) {
+          const folderPath = `review-images/${review.review_id}/`;
+          const { data: files } = await supabase.storage.from('review-media').list(folderPath);
+          if (files && files.length > 0) {
+            const filesToDelete = files.map(f => `${folderPath}${f.name}`);
+            await supabase.storage.from('review-media').remove(filesToDelete);
+          }
+        }
+      }
+
+      // 2. Delete public record 
+      // (This triggers the SQL function to delete the Auth account automatically)
+      const { error: deleteError } = await supabase.from('users').delete().eq('user_id', user.id);
+      if (deleteError) throw deleteError;
+
+      await supabase.auth.signOut();
+      window.location.href = '/';
+    } catch (err) {
+      setMessage({ type: 'error', text: `Delete failed: ${err.message}` });
+      setShowDeleteModal(false);
     } finally {
       setLoading(false);
     }
   }
 
   const inputClass = `mt-1 block w-full rounded-lg border px-4 py-2.5 outline-none transition-all duration-200 shadow-sm font-medium ${
-    dark 
-      ? 'bg-[#1a1d26] border-white/10 text-white focus:border-[#f5bf3e] focus:ring-2 focus:ring-[#f5bf3e]/20' 
-      : 'bg-white border-gray-400 text-black focus:border-black focus:ring-4 focus:ring-[#f5bf3e]/40'
+    dark ? 'bg-[#1a1d26] border-white/10 text-white focus:border-[#f5bf3e]' : 'bg-white border-gray-300 text-black focus:border-black'
   }`;
 
   return (
-    <div className={`relative min-h-[calc(100vh-3.5rem)] overflow-hidden ${dark ? 'bg-[#0f1219]' : 'bg-[#fcfcfc]'}`}>
-      
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className={`absolute -top-[10%] -right-[10%] h-[50%] w-[50%] rounded-full blur-[120px] opacity-10 ${dark ? 'bg-[#f5bf3e]' : 'bg-[#f5bf3e]'}`} />
-      </div>
-
-      <div className="relative z-10 mx-auto max-w-2xl px-4 py-12 sm:px-6">
-        <h1 className={`font-display text-3xl font-black uppercase tracking-tight ${dark ? 'text-white' : 'text-black'}`}>
-          Edit profile
+    <div className={`min-h-[calc(100vh-3.5rem)] py-12 px-4 ${dark ? 'bg-[#0f1219]' : 'bg-[#fcfcfc]'}`}>
+      <div className="max-w-2xl mx-auto">
+        <h1 className={`text-3xl font-black uppercase tracking-tight mb-8 ${dark ? 'text-white' : 'text-black'}`}>
+          Profile Settings
         </h1>
 
         {message.text && (
-          <div className={`mt-6 flex items-center gap-3 p-4 rounded-lg border-2 ${
-            message.type === 'success' 
-              ? 'bg-green-50 border-green-600 text-green-900' 
-              : 'bg-red-50 border-[#a32638] text-[#a32638]'
+          <div className={`mb-6 p-4 rounded-lg border-2 font-bold ${
+            message.type === 'success' ? 'bg-green-50 border-green-500 text-green-700' : 'bg-red-50 border-red-500 text-red-700'
           }`}>
-            <span className="font-bold">{message.type === 'success' ? '✓' : '✕'}</span>
-            <p className="text-sm font-bold">{message.text}</p>
+            {message.text}
           </div>
         )}
 
-        <form onSubmit={handleSubmitTrigger} className="mt-8 space-y-6">
-          {/* DISPLAY NAME */}
+        <form onSubmit={handleUpdate} className="space-y-6">
+          {/* Display Name */}
           <div>
-            <label className={`text-xs font-black uppercase tracking-widest mb-1 block ${dark ? 'text-white/50' : 'text-black/60'}`}>
-              Display Name
-            </label>
+            <label className="text-xs font-black uppercase tracking-widest opacity-50 block mb-1">Display Name</label>
             <input type="text" value={displayName} onChange={(e) => setDisplayName(e.target.value)} className={inputClass} required />
           </div>
 
-          {/* AFFILIATION DROPDOWN */}
+          {/* Affiliation Dropdown */}
           <div className="relative" ref={dropdownRef}>
-            <label className={`text-xs font-black uppercase tracking-widest mb-1 block ${dark ? 'text-white/50' : 'text-black/60'}`}>
-              Affiliation to UMBC
-            </label>
-            <button
-              type="button"
-              onClick={() => setIsOpen(!isOpen)}
-              className={`${inputClass} flex items-center justify-between text-left hover:border-[#f5bf3e]`}
-            >
-              <span className={!affiliation ? (dark ? 'text-white/40' : 'text-black/40') : ''}>
-                {affiliation
-                  ? (AFFILIATION_OPTIONS.find((o) => o.value === affiliation)?.label ?? affiliation)
-                  : 'Select affiliation'}
-              </span>
-              <svg className={`h-4 w-4 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-              </svg>
+            <label className="text-xs font-black uppercase tracking-widest opacity-50 block mb-1">Affiliation</label>
+            <button type="button" onClick={() => setIsOpen(!isOpen)} className={`${inputClass} flex justify-between items-center text-left`}>
+              {AFFILIATION_OPTIONS.find(o => o.value === affiliation)?.label || 'Select Affiliation'}
+              <span className={`transition-transform ${isOpen ? 'rotate-180' : ''}`}>▼</span>
             </button>
-
             {isOpen && (
-              <div className={`absolute z-50 mt-2 w-full rounded-xl border-2 p-1.5 shadow-2xl ${
-                dark ? 'bg-[#1a1d26] border-white/10' : 'bg-white border-black shadow-black/10'
-              }`}>
+              <div className={`absolute z-20 mt-2 w-full rounded-xl border-2 shadow-xl p-1 ${dark ? 'bg-[#1a1d26] border-white/10' : 'bg-white border-black'}`}>
                 {AFFILIATION_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => { setAffiliation(opt.value); setIsOpen(false); }}
-                    className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-bold transition-all ${
-                      affiliation === opt.value 
-                        ? 'bg-[#f5bf3e] text-black' 
-                        : (dark ? 'text-white hover:bg-white/5' : 'text-black hover:bg-[#f5bf3e]/10')
-                    }`}
-                  >
+                  <button key={opt.value} type="button" onClick={() => { setAffiliation(opt.value); setIsOpen(false); }} className={`w-full text-left px-4 py-2 rounded-lg font-bold hover:bg-[#f5bf3e] hover:text-black transition-colors ${dark ? 'text-white' : 'text-black'}`}>
                     {opt.label}
                   </button>
                 ))}
@@ -181,74 +200,102 @@ export function ProfilePage() {
             )}
           </div>
 
-          {/* NEW PASSWORD SECTION */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* Password Section (Always visible) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 border-t border-dashed border-gray-500/20">
+            <div className="sm:col-span-2">
+              <h3 className="text-xs font-black uppercase tracking-widest text-[#f5bf3e]">
+                {userProvider === 'email' ? 'Change Password' : 'Set New Password'}
+              </h3>
+              {userProvider !== 'email' && (
+                <p className="text-[10px] opacity-50 uppercase mt-1">
+                  You logged in via {userProvider}.
+                </p>
+              )}
+            </div>
             <div>
-              <label className={`text-xs font-black uppercase tracking-widest mb-1 block ${dark ? 'text-white/50' : 'text-black/60'}`}>
-                New Password
-              </label>
+              <label className="text-xs font-black uppercase tracking-widest opacity-50 block mb-1">New Password</label>
               <input 
                 type="password" 
                 value={password} 
                 onChange={(e) => setPassword(e.target.value)} 
                 className={inputClass} 
-                placeholder="New password" 
+                placeholder="Min. 6 chars" 
               />
             </div>
             <div>
-              <label className={`text-xs font-black uppercase tracking-widest mb-1 block ${dark ? 'text-white/50' : 'text-black/60'}`}>
-                Confirm Password
-              </label>
+              <label className="text-xs font-black uppercase tracking-widest opacity-50 block mb-1">Confirm New Password</label>
               <input 
                 type="password" 
                 value={confirmPassword} 
                 onChange={(e) => setConfirmPassword(e.target.value)} 
                 className={inputClass} 
-                placeholder="Re-type password" 
               />
             </div>
           </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className={`w-full rounded-lg py-4 font-black uppercase tracking-widest shadow-xl transition-all active:scale-[0.98] disabled:opacity-50 ${
-              loading 
-                ? 'bg-gray-400 text-white cursor-not-allowed' 
-                : 'bg-[#f5bf3e] text-[#000000] hover:bg-[#000000] hover:text-[#f5bf3e]'
-            }`}
-          >
-            {loading ? 'Processing...' : 'Save Profile'}
-          </button>
+          <div className="pt-4 space-y-4">
+            <button type="submit" disabled={loading} className="w-full py-4 rounded-lg bg-[#f5bf3e] text-black font-black uppercase tracking-widest hover:bg-black hover:text-[#f5bf3e] transition-all disabled:opacity-50">
+              {loading ? 'Saving...' : 'Save Changes'}
+            </button>
+
+            <button 
+              type="button" 
+              onClick={() => setShowDeleteModal(true)}
+              className="w-full py-2 text-xs font-black uppercase tracking-widest text-red-500 hover:text-red-700 transition-colors"
+            >
+              Delete Account
+            </button>
+          </div>
         </form>
       </div>
 
-      {/* CONFIRMATION MODAL OVERLAY */}
+      {/* UPDATE CONFIRMATION MODAL */}
       {showConfirmModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className={`w-full max-w-md rounded-2xl p-8 border-2 shadow-2xl ${
-            dark ? 'bg-[#1a1d26] border-white/10 text-white' : 'bg-white border-black text-black'
-          }`}>
-            <h3 className="text-xl font-black uppercase tracking-tight mb-2">Confirm Changes</h3>
-            <p className={`mb-8 font-medium ${dark ? 'text-white/60' : 'text-black/60'}`}>
-              Are you sure you want to save these profile updates?
-              {password && " Since you provided a new password, you will need to use it next time you log in."}
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className={`p-8 rounded-2xl max-w-sm w-full border-2 ${dark ? 'bg-[#1a1d26] border-white/10 text-white' : 'bg-white border-black text-black'}`}>
+            <h2 className="text-xl font-black uppercase mb-4">Confirm Save?</h2>
+            <div className="flex gap-3">
+              <button onClick={confirmUpdate} className="flex-1 py-3 rounded-lg bg-[#f5bf3e] text-black font-black">Yes</button>
+              <button onClick={() => setShowConfirmModal(false)} className="flex-1 py-3 rounded-lg border border-current font-black">No</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DELETE ACCOUNT MODAL */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+          <div className={`p-8 rounded-2xl max-w-sm w-full border-2 border-red-500/50 ${dark ? 'bg-[#1a1d26] text-white' : 'bg-white text-black'}`}>
+            <h2 className="text-xl font-black uppercase mb-2 text-red-500">Danger Zone</h2>
+            <p className="text-sm opacity-70 mb-4 font-medium">
+              This will permanently delete your profile, all your reviews, and associated images. 
+              Type <span className="font-black text-red-500 underline">DELETE ACCOUNT</span> below to confirm.
             </p>
             
-            <div className="flex flex-col sm:flex-row gap-3">
-              <button
-                onClick={confirmUpdate}
-                className="flex-1 rounded-lg bg-[#f5bf3e] py-3 font-black uppercase tracking-widest text-black hover:bg-black hover:text-[#f5bf3e] transition-colors border-2 border-transparent hover:border-[#f5bf3e]"
+            <input 
+              type="text" 
+              placeholder="DELETE ACCOUNT"
+              className={`w-full mb-6 px-4 py-3 rounded-lg border-2 text-center font-black uppercase transition-all outline-none ${
+                dark ? 'bg-black/40 border-white/10 text-white focus:border-red-500 placeholder:text-white/20' : 'bg-gray-100 border-gray-300 focus:border-red-500'
+              }`}
+              value={deleteConfirmText}
+              onChange={(e) => setDeleteConfirmText(e.target.value)}
+            />
+
+            <div className="flex flex-col gap-3">
+              <button 
+                onClick={handleDeleteAccount} 
+                disabled={loading || deleteConfirmText.toUpperCase() !== 'DELETE ACCOUNT'}
+                className="w-full py-3 rounded-lg bg-red-50 text-red-500 border-2 border-red-500 font-black uppercase tracking-widest hover:bg-red-500 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-all"
               >
-                Yes, Save
+                {loading ? 'Deleting...' : 'Confirm Delete'}
               </button>
-              <button
-                onClick={() => setShowConfirmModal(false)}
-                className={`flex-1 rounded-lg py-3 font-black uppercase tracking-widest transition-colors border-2 ${
-                  dark 
-                    ? 'border-white/10 hover:bg-white/5' 
-                    : 'border-black/10 hover:bg-black/5'
-                }`}
+              <button 
+                onClick={() => {
+                  setShowDeleteModal(false);
+                  setDeleteConfirmText('');
+                }} 
+                className="w-full py-3 rounded-lg border border-current font-black uppercase tracking-widest opacity-50 hover:opacity-100"
               >
                 Cancel
               </button>

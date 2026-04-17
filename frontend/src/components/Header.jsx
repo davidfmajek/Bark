@@ -127,22 +127,22 @@ export function Header() {
     }
     const match = establishments.find((e) => e.name.toLowerCase() === q.toLowerCase());
     if (match) {
-      navigate(`/restaurants?e=${match.establishment_id}`);
+      navigate(`/restaurants/${match.establishment_id}`);
       setSearchQuery('');
       return;
     }
     if (searchMatches.length === 1) {
-      navigate(`/restaurants?e=${searchMatches[0].establishment_id}`);
+      navigate(`/restaurants/${searchMatches[0].establishment_id}`);
       setSearchQuery('');
       return;
     }
-    navigate(`/restaurants?q=${encodeURIComponent(q)}`);
+    navigate(`/restaurants/${encodeURIComponent(q)}`);
   };
 
   const handleSearchResultSelect = (establishmentId) => {
     setSearchQuery('');
     setSearchDropdownOpen(false);
-    navigate(`/restaurants?e=${establishmentId}`);
+    navigate(`/restaurants/${establishmentId}`);
   };
 
   const showSearchDropdown = searchDropdownOpen && searchTrimmed.length > 0;
@@ -297,7 +297,7 @@ export function Header() {
                     {establishments.map((e) => (
                       <Link
                         key={e.establishment_id}
-                        to={`/restaurants?e=${e.establishment_id}`}
+                        to={`/restaurants/${e.establishment_id}`}
                         className={restaurantsItemCls}
                         role="menuitem"
                       >
