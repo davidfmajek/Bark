@@ -87,7 +87,7 @@ export function MapPage() {
       ) : (
         <div className="absolute inset-0 opacity-30 [background-image:radial-gradient(rgba(0,0,0,0.04)_1px,transparent_1px)] [background-size:18px_18px]" />
       )}
-      <section className="relative z-10 mx-auto flex min-h-[calc(100vh-3.5rem)] w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
+      <section className="relative z-10 mx-auto flex min-h-[calc(85vh-3.5rem)] w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
 
         <div className={`grid flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_320px] ${dark ? 'text-white' : 'text-black'}`}>
           <div className={`overflow-hidden rounded-[2rem] border shadow-2xl ${dark ? 'border-white/10 bg-white/[0.03] shadow-black/30' : 'border-black/10 bg-white shadow-black/10'}`}>
@@ -99,7 +99,7 @@ export function MapPage() {
               maxBoundsViscosity={1}
               minZoom={15}
               maxZoom={18}
-              className="h-[95vh] min-h-[460px] w-full"
+              className="h-[85vh] min-h-[460px] w-full"
             >
               <TileLayer
                 attribution='&copy; OpenStreetMap contributors'
@@ -124,7 +124,7 @@ export function MapPage() {
             </MapContainer>
           </div>
 
-          <aside className={`flex max-h-[95vh] min-h-[460px] flex-col rounded-[2rem] border p-5 backdrop-blur ${dark ? 'border-white/10 bg-white/[0.05]' : 'border-black/10 bg-white/90'}`}>
+          <aside className={`flex max-h-[85vh] min-h-[460px] flex-col rounded-[2rem] border p-5 backdrop-blur ${dark ? 'border-white/10 bg-white/[0.05]' : 'border-black/10 bg-white/90'}`}>
             <h2 className={`font-display text-2xl font-black tracking-tight ${dark ? 'text-white' : 'text-black'}`}>
               Dining Locations
             </h2>
