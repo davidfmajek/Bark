@@ -300,9 +300,9 @@ export function HomePage() {
         {/* Signup CTA */}
         {!isAuthenticated && (
           <section className="mx-auto mt-14 max-w-6xl px-4 pb-16 sm:px-6">
-            <div className={`rounded-3xl border p-10 text-center ${dark ? 'border-white/10 bg-[#0f1219]' : 'border-black/10 bg-[#1e2430]'}`}>
-              <h2 className="font-display text-3xl font-extrabold text-white">Join the pack.</h2>
-              <p className="mt-3 text-white/70">Create an account to write reviews and track your dining history.</p>
+            <div className={`rounded-3xl border p-10 text-center ${dark ? 'border-white/10 bg-[#0f1219]' : 'border-black/10 bg-white'}`}>
+              <h2 className={`font-display text-3xl font-extrabold ${dark ? 'text-white' : 'text-[#16181f]'}`}>Join the pack.</h2>
+              <p className={`mt-3 ${dark ? 'text-white/70' : 'text-black/70'}`}>Create an account to write reviews and track your dining history.</p>
               <Link to="/signin?mode=signup" className="mt-6 inline-flex rounded-full bg-[#f5bf3e] px-8 py-3 text-sm font-extrabold text-[#16181f] hover:bg-[#ffd15e]">
                 Create Free Account
               </Link>
