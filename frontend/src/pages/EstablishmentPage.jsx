@@ -22,6 +22,8 @@ import { formatRelativeReviewTime } from '../lib/utils.js';
 
 function buildCollagePanels(allUrls, offset) {
   const u = allUrls.filter(Boolean);
+  //console.log(`UrlArray Length: ${u.length}`);
+  /*
   if (u.length === 0) {
     return { panels: [null, null, null], photoCount: 0, galleryMaxOffset: 0 };
   }
@@ -58,13 +60,28 @@ function buildCollagePanels(allUrls, offset) {
     photoCount: len,
     galleryMaxOffset: maxO,
   };
+  */
+  const len = u.length;
+  const max0 = Math.max(0, len - 3);
+  const o = Math.min(Math.max(0, offset), max0);
+
+  return {
+    panels: [0, 1, 2].map((i) => ({
+      src: u[o + i],
+      objectPosition: "center",
+    })),
+    photoCount: len,
+    galleryMaxOffset: max0,
+  };
 }
 
 function CollageCell({ panel, index, panelBroken, setPanelBroken, dark, className }) {
   const broken = panelBroken[index];
+  //console.log(`broken: ${broken}`);
   return (
     <>
-      {panel && !broken ? (
+      {/*panel && !broken ? (*/}
+      {panel ? (
         <img
           alt=""
           src={panel.src}
@@ -128,7 +145,7 @@ export function EstablishmentPage() {
 
   const { panels, photoCount, galleryMaxOffset } = useMemo(
     () => buildCollagePanels(galleryUrls, galleryOffset),
-    [galleryUrls, galleryOffset],
+    [galleryUrls, galleryOffset, reviewPhotosByReviewId],
   );
 
   useEffect(() => {
@@ -138,6 +155,16 @@ export function EstablishmentPage() {
     setGalleryUrls([]);
     (async () => {
       const urls = await fetchEstablishmentGalleryUrls(supabase, establishment);
+      // add review pictures to galleryUrls
+      for (const value of Object.values(reviewPhotosByReviewId)) {
+        for (const v of value) {
+          urls.push(v.src);
+        }
+        //console.log(JSON.stringify(value, null, "\t"));
+      }
+      
+      //const urls = await fetchEstablishmentGalleryUrls(supabase, establishment);
+      //console.log(urls);
       if (!cancelled) {
         setGalleryUrls(urls);
         setGalleryLoading(false);
@@ -146,7 +173,7 @@ export function EstablishmentPage() {
     return () => {
       cancelled = true;
     };
-  }, [establishment?.establishment_id]);
+  }, [establishment?.establishment_id, Object.values(reviewPhotosByReviewId).length]);
 
   useEffect(() => {
     setGalleryOffset(0);
@@ -361,7 +388,8 @@ export function EstablishmentPage() {
     
     fetchHelpfulVotes();
   }, [establishment?.establishment_id, reviews.length]);
-
+  
+  /*
   useEffect(() => {
     console.log("reviews changed:", reviews);
   }, [reviews.length]);
@@ -369,6 +397,8 @@ export function EstablishmentPage() {
   useEffect(() => {
     console.log("likeButton state changed:", likeButton);
   }, [likeButton]);
+  */
+
   if (loading) {
     return (
       <div className="flex h-screen items-center justify-center">
@@ -433,7 +463,7 @@ export function EstablishmentPage() {
                   setPanelBroken={setPanelBroken}
                   dark={dark}
                   className="h-full min-h-[9rem]"
-                />
+                />heroesData?.publicUrl]
               </div>
             </div>
           </div>

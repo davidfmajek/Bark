@@ -180,9 +180,23 @@ export function getRestaurantCardImageCandidates(restaurant, supabase = null) {
 /** First card image URL that actually returns an image (avoids dozens of failed <img> loads on the grid). */
 export async function resolveRestaurantCardImageUrl(supabase, restaurant) {
   const urls = getRestaurantCardImageCandidates(restaurant, supabase);
-  if (urls.length === 0) return null;
-  const found = await probePublicImageUrlsInOrder(urls, 1);
-  return found[0] ?? null;
+  const hero = supabase.storage.from("Resturant-logos").getPublicUrl(`heroes/${restaurant.establishment_id}.png`);
+  const logo = supabase.storage.from("Resturant-logos").getPublicUrl(`logos/${restaurant.establishment_id}.png`);
+
+  const heroResult = await fetch(hero.data.publicUrl);
+  const heroExists = heroResult.ok;
+  const logoResult = await fetch(logo.data.publicUrl);
+  const logoExists = logoResult.ok;
+
+  if (logoExists == false && heroExists == true) {
+    return hero.data.publicUrl;
+  }
+  else if (logoExists == true) {
+    return logo.data.publicUrl;
+  }
+  else {
+    return "";
+  }
 }
 
 // First candidate URL only — often 404. Use fetchCarouselSlidesFromStorage.
@@ -196,30 +210,6 @@ export function getRestaurantCarouselSlides(restaurants = []) {
       alt: 'UMBC restaurant',
     };
   });
-}
-
-async function listImagePathsInFolder(supabase, bucket, folder) {
-  const imageRe = /\.(png|jpg|jpeg|webp|heic|heif)$/i;
-  const { data, error } = await supabase.storage.from(bucket).list(folder, {
-    limit: 1000,
-    offset: 0,
-    sortBy: { column: 'name', order: 'asc' },
-  });
-  if (error || !Array.isArray(data)) return [];
-  return data
-    .filter((f) => f?.name && imageRe.test(f.name))
-    .map((f) => `${folder}/${f.name}`);
-}
-
-function getConventionalStoragePath(establishmentId, heroesSet, logosSet) {
-  const id = String(establishmentId ?? '').trim();
-  if (!id) return null;
-  for (const p of getConventionalCandidatePathsById(id)) {
-    // Only heroes/ and logos/ list() results are trustworthy here.
-    if (p.startsWith(`${HEROES_FOLDER}/`) && heroesSet.has(p)) return p;
-    if (p.startsWith(`${LOGOS_FOLDER}/`) && logosSet.has(p)) return p;
-  }
-  return null;
 }
 
 const PROBE_FETCH_TIMEOUT_MS = 10_000;
@@ -373,19 +363,6 @@ export async function fetchCarouselSlidesFromStorage(supabase, establishments) {
   if (!supabase || !Array.isArray(establishments) || establishments.length === 0) return [];
 
   const bucket = STORAGE_BUCKET;
-  if (!bucket) {
-    return fetchCarouselSlidesByProbing(establishments);
-  }
-
-  const [heroPaths, logoPaths] = await Promise.all([
-    listImagePathsInFolder(supabase, bucket, HEROES_FOLDER),
-    listImagePathsInFolder(supabase, bucket, LOGOS_FOLDER),
-  ]);
-  const heroesSet = new Set(heroPaths);
-  const logosSet = new Set(logoPaths);
-  if (heroesSet.size === 0 && logosSet.size === 0) {
-    return fetchCarouselSlidesByProbing(establishments);
-  }
 
   const slides = [];
   for (const e of establishments) {
@@ -393,51 +370,36 @@ export async function fetchCarouselSlidesFromStorage(supabase, establishments) {
     const id = String(e?.establishment_id ?? '').trim();
     if (!id) continue;
 
-    const explicitUrls = [
-      ...getPathOrUrlCandidateUrls(supabase, e?.header_image_path),
-      ...getPathOrUrlCandidateUrls(supabase, e?.logo_path),
-      ...getPathOrUrlCandidateUrls(supabase, e?.header_image),
-    ];
-    if (explicitUrls.length > 0) {
+    const logo = supabase.storage.from("Resturant-logos").getPublicUrl(`logos/${e?.establishment_id}.png`);
+    const logoResult = await fetch(logo.data.publicUrl);
+    const logoExists = logoResult.ok;
+
+    if (logoExists == true) {
       slides.push({
         key: id,
-        imageSrc: explicitUrls[0],
-        alt: e.name ? `${e.name}` : 'Restaurant photo',
+        imageSrc: logo.data.publicUrl,
+        alt: e.name ? `${e.name}` : "Restaurant photo",
       });
       continue;
     }
 
-    const conventionalPath = getConventionalStoragePath(id, heroesSet, logosSet);
-    if (!conventionalPath) continue;
-    const { data: pub } = supabase.storage.from(bucket).getPublicUrl(conventionalPath);
-    const url = pub?.publicUrl;
-    if (!url) continue;
+    const hero = supabase.storage.from("Resturant-logos").getPublicUrl(`heroes/${e?.establishment_id}.png`);
+    const heroResult = await fetch(hero.data.publicUrl);
+    const heroExists = heroResult.ok;
 
-    slides.push({
-      key: id,
-      imageSrc: url,
-      alt: e.name ? `${e.name}` : 'Restaurant photo',
-    });
+    if (heroExists == true) {
+      slides.push({
+        key: id,
+        imageSrc: hero.data.publicUrl,
+        alt: e.name ? `${e.name}` : "Restaurant photo",
+      });
+    }
+
   }
 
   return slides;
 }
 
-async function fetchCarouselSlidesByProbing(establishments) {
-  const slides = [];
-  for (const e of establishments) {
-    if (slides.length >= MAX_HOME_CAROUSEL_SLIDES) break;
-    const candidates = getRestaurantImageCandidates(e);
-    const first = await probePublicImageUrlsInOrder(candidates, 1);
-    if (first.length === 0) continue;
-    slides.push({
-      key: String(e.establishment_id),
-      imageSrc: first[0],
-      alt: e.name ? `${e.name}` : 'Restaurant photo',
-    });
-  }
-  return slides;
-}
 
 export const MAX_ESTABLISHMENT_GALLERY_IMAGES = 50; // establishment page gallery cap
 
@@ -449,34 +411,6 @@ function getEstablishmentStorageGalleryPaths(restaurant) {
   return getConventionalCandidatePathsById(id);
 }
 
-
-// Sync URL list for establishment gallery (no Storage list; for fallback probing).
-export function getEstablishmentGalleryUrls(establishment) {
-  const urls = [];
-  const push = (u) => {
-    if (u && typeof u === 'string' && !urls.includes(u)) urls.push(u);
-  };
-
-  const explicitLogoCandidates = getPathOrUrlCandidateUrls(
-    null,
-    establishment?.logo_path,
-  );
-  for (const url of explicitLogoCandidates) push(url);
-
-  const explicitPathCandidates = getPathOrUrlCandidateUrls(
-    null,
-    establishment?.header_image_path,
-  );
-  for (const url of explicitPathCandidates) push(url);
-
-  push(establishment?.header_image);
-
-  for (const p of getEstablishmentStorageGalleryPaths(establishment)) {
-    push(toImageSrc(p));
-  }
-
-  return urls.slice(0, MAX_ESTABLISHMENT_GALLERY_IMAGES);
-}
 
 // Logos/heroes/header first, then review-media. Deduped, capped at max.
 function mergeBrandThenReviewUrls(brandUrls, reviewUrls, max) {
@@ -492,122 +426,26 @@ function mergeBrandThenReviewUrls(brandUrls, reviewUrls, max) {
   return out;
 }
 
-async function fetchReviewImageUrlsForEstablishment(supabase, establishmentId) {
-  if (!supabase || !establishmentId) return [];
-  const { data, error } = await supabase
-    .from('review_images')
-    .select('storage_url, display_order, reviews!inner(establishment_id)')
-    .eq('reviews.establishment_id', establishmentId)
-    .order('display_order', { ascending: true });
-
-  if (error) {
-    console.warn('fetchReviewImageUrlsForEstablishment:', error.message ?? error);
-    return [];
-  }
-  if (!Array.isArray(data) || data.length === 0) return [];
-
-  const urls = [];
-  for (const row of data) {
-    const u = await resolveReviewImageForDisplay(supabase, row?.storage_url);
-    if (u && !urls.includes(u)) urls.push(u);
-  }
-  return urls;
-}
-
 // Async gallery: restaurant-logos (heroes/logos + explicit/header) first, then review-media.
 export async function fetchEstablishmentGalleryUrls(supabase, establishment) {
-  const id = String(establishment?.establishment_id ?? '').trim();
-  const bucket = STORAGE_BUCKET;
-  const max = MAX_ESTABLISHMENT_GALLERY_IMAGES;
+  const heroes = supabase.storage.from("Resturant-logos").getPublicUrl(`heroes/${establishment?.establishment_id}.png`);
+  const logos = supabase.storage.from("Resturant-logos").getPublicUrl(`logos/${establishment?.establishment_id}.png`);
 
-  const reviewUrls =
-    establishment && supabase && id ? await fetchReviewImageUrlsForEstablishment(supabase, id) : [];
+  const heroResult = await fetch(heroes.data.publicUrl);
+  const heroExists = heroResult.ok;
+  const logoResult = await fetch(logos.data.publicUrl);
+  const logoExists = logoResult.ok;
 
-  if (!establishment || !supabase || !bucket || !id) {
-    const explicit = getPathOrUrlCandidateUrls(supabase, establishment?.header_image_path);
-    const ex0 = explicit[0];
-    const hi = establishment?.header_image;
-    const [okEx, okHi] = await Promise.all([
-      ex0 ? probePublicImageUrl(ex0) : Promise.resolve(false),
-      hi && typeof hi === 'string' ? probePublicImageUrl(hi) : Promise.resolve(false),
-    ]);
-    const brandEarly = [];
-    if (okEx && ex0) brandEarly.push(ex0);
-    if (okHi && hi && typeof hi === 'string' && !brandEarly.includes(hi)) brandEarly.unshift(hi);
-    if (brandEarly.length > 0 || reviewUrls.length > 0) {
-      return mergeBrandThenReviewUrls(brandEarly, reviewUrls, max);
-    }
-    return [];
+  const urls = [];
+  if (heroExists == false && logoExists == true) {
+    urls.push(logos.data.publicUrl, logos.data.publicUrl, logos.data.publicUrl);
+  }
+  else if (heroExists == true && logoExists == false) {
+    urls.push(heroes.data.publicUrl, heroes.data.publicUrl, heroes.data.publicUrl);
+  }
+  else {
+    urls.push(logos.data.publicUrl, heroes.data.publicUrl, logos.data.publicUrl);
   }
 
-  const [heroPaths, logoPaths] = await Promise.all([
-    listImagePathsInFolder(supabase, bucket, HEROES_FOLDER),
-    listImagePathsInFolder(supabase, bucket, LOGOS_FOLDER),
-  ]);
-  const heroesSet = new Set(heroPaths);
-  const logosSet = new Set(logoPaths);
-
-  // Paths confirmed by list() — do not probe (CORS/timing often fails on valid Supabase URLs).
-  const brandFromBucket = [];
-  let listedMatchForThisPlace = false;
-  for (const p of orderedBrandCandidatePathsForId(id)) {
-    if (brandFromBucket.length >= max) break;
-    const isHeroPath = p.startsWith(`${HEROES_FOLDER}/`);
-    const isLogoPath = p.startsWith(`${LOGOS_FOLDER}/`);
-    const exists = (isHeroPath && heroesSet.has(p)) || (isLogoPath && logosSet.has(p));
-    if (!exists) continue;
-    listedMatchForThisPlace = true;
-    const { data: pub } = supabase.storage.from(bucket).getPublicUrl(p);
-    const url = pub?.publicUrl;
-    if (url && !brandFromBucket.includes(url)) brandFromBucket.push(url);
-  }
-
-  // list() often returns [] without Storage SELECT policies — still try public object URLs.
-  if (!listedMatchForThisPlace) {
-    const extRe = new RegExp(`\\.(${IMAGE_EXTENSIONS.join('|')})$`, 'i');
-    const toProbe = [];
-    for (const p of orderedBrandCandidatePathsForId(id)) {
-      const inHeroOrLogo =
-        p.startsWith(`${HEROES_FOLDER}/`) ||
-        p.startsWith(`${LOGOS_FOLDER}/`) ||
-        p.startsWith(`${IMAGES_FOLDER}/${HEROES_FOLDER}/`) ||
-        p.startsWith(`${IMAGES_FOLDER}/${LOGOS_FOLDER}/`);
-      const rootImage = !p.includes('/') && extRe.test(p);
-      if (!inHeroOrLogo && !rootImage) continue;
-      const { data: pub } = supabase.storage.from(bucket).getPublicUrl(p);
-      const url = pub?.publicUrl;
-      if (!url || toProbe.includes(url)) continue;
-      toProbe.push(url);
-    }
-    const found = await probePublicImageUrlsInOrder(toProbe, max);
-    brandFromBucket.push(...found);
-  }
-
-  const explicitLogo = getPathOrUrlCandidateUrls(supabase, establishment?.logo_path);
-  const explicitHeader = getPathOrUrlCandidateUrls(supabase, establishment?.header_image_path);
-  const explicitCandidates = [explicitLogo[0], explicitHeader[0]].filter(
-    (u) => u && !brandFromBucket.includes(u),
-  );
-  const explicitOk = await probePublicImageUrlsInOrder(
-    explicitCandidates,
-    Math.max(0, max - brandFromBucket.length),
-  );
-  for (const u of explicitOk) {
-    if (brandFromBucket.length >= max) break;
-    brandFromBucket.push(u);
-  }
-
-  const hi = establishment.header_image;
-  if (hi && typeof hi === 'string' && !brandFromBucket.includes(hi) && (await probePublicImageUrl(hi))) {
-    brandFromBucket.unshift(hi);
-  }
-
-  const final = mergeBrandThenReviewUrls(brandFromBucket, reviewUrls, max);
-  if (final.length > 0) {
-    return final;
-  }
-
-  const candidates = getEstablishmentGalleryUrls(establishment);
-  const brandFallback = await probePublicImageUrlsInOrder(candidates, max);
-  return mergeBrandThenReviewUrls(brandFallback, reviewUrls, max);
+  return urls;
 }

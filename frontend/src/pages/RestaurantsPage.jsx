@@ -87,7 +87,6 @@ useEffect(() => {
         `)
         .eq('establishments_with_ratings.is_active', true)
         .eq('day_of_week', CurrentDay);
-
       if (error) throw error;
 
       // 1. Flatten the data

@@ -5,8 +5,7 @@ import { PictureCarousel } from '../components/PictureCarousel';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { 
-  fetchCarouselSlidesFromStorage, 
-  getRestaurantImageCandidates 
+  fetchCarouselSlidesFromStorage
 } from '../lib/restaurantImages';
 
 function Stars({ rating, dark }) {
@@ -66,7 +65,7 @@ export function HomePage() {
           .select('*, users(display_name)')
           .order('helpful_count', { ascending: false })
       ]);
-
+	
       const activeEsts = estRes.data ?? [];
       const allReviews = revRes.data ?? [];
 
