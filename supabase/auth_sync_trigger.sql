@@ -47,12 +47,27 @@ BEGIN
     255
   );
 
-  INSERT INTO public.users (user_id, email, password_hash, display_name, affiliation, is_admin, created_at, last_login)
+  INSERT INTO public.users (
+    user_id,
+    email,
+    password_hash,
+    display_name,
+    avatar_url,
+    avatar_path,
+    avatar_bucket,
+    affiliation,
+    is_admin,
+    created_at,
+    last_login
+  )
   VALUES (
     NEW.id,
     NEW.email,
     '[Supabase Auth]',
     v_display,
+    NULLIF(TRIM(NEW.raw_user_meta_data->>'avatar_url'), ''),
+    NULLIF(TRIM(NEW.raw_user_meta_data->>'avatar_path'), ''),
+    NULLIF(TRIM(NEW.raw_user_meta_data->>'avatar_bucket'), ''),
     aff,
     FALSE,
     NOW(),
@@ -62,6 +77,9 @@ BEGIN
     email = EXCLUDED.email,
     password_hash = EXCLUDED.password_hash,
     display_name = COALESCE(NULLIF(EXCLUDED.display_name, ''), public.users.display_name),
+    avatar_url = COALESCE(NULLIF(EXCLUDED.avatar_url, ''), public.users.avatar_url),
+    avatar_path = COALESCE(NULLIF(EXCLUDED.avatar_path, ''), public.users.avatar_path),
+    avatar_bucket = COALESCE(NULLIF(EXCLUDED.avatar_bucket, ''), public.users.avatar_bucket),
     affiliation = EXCLUDED.affiliation,
     last_login = EXCLUDED.last_login;
 
@@ -77,7 +95,19 @@ CREATE TRIGGER on_auth_user_created
   FOR EACH ROW
   EXECUTE PROCEDURE public.handle_new_auth_user();
 
-INSERT INTO public.users (user_id, email, password_hash, display_name, affiliation, is_admin, created_at, last_login)
+INSERT INTO public.users (
+  user_id,
+  email,
+  password_hash,
+  display_name,
+  avatar_url,
+  avatar_path,
+  avatar_bucket,
+  affiliation,
+  is_admin,
+  created_at,
+  last_login
+)
 SELECT
   id,
   email,
@@ -91,6 +121,9 @@ SELECT
     ),
     255
   ),
+  NULLIF(TRIM(raw_user_meta_data->>'avatar_url'), ''),
+  NULLIF(TRIM(raw_user_meta_data->>'avatar_path'), ''),
+  NULLIF(TRIM(raw_user_meta_data->>'avatar_bucket'), ''),
   'Other',
   FALSE,
   created_at,

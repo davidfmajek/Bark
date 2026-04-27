@@ -2,6 +2,28 @@
 
 ALTER TABLE public.reviews ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.review_images ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
+
+-- Users: anyone can read basic profile rows for review attribution.
+DROP POLICY IF EXISTS "users_select_all" ON public.users;
+CREATE POLICY "users_select_all" ON public.users FOR SELECT USING (true);
+
+-- Users: signed-in users can create/update/delete only their own profile row.
+DROP POLICY IF EXISTS "users_insert_own" ON public.users;
+CREATE POLICY "users_insert_own" ON public.users
+  FOR INSERT TO authenticated
+  WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "users_update_own" ON public.users;
+CREATE POLICY "users_update_own" ON public.users
+  FOR UPDATE TO authenticated
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "users_delete_own" ON public.users;
+CREATE POLICY "users_delete_own" ON public.users
+  FOR DELETE TO authenticated
+  USING (auth.uid() = user_id);
 
 -- Reviews: anyone can read (establishment pages, recent reviews sidebar).
 DROP POLICY IF EXISTS "reviews_select_all" ON public.reviews;

@@ -4,7 +4,7 @@
 -- Enums (skip if already created — avoids ERROR: type "…" already exists)
 DO $$ BEGIN
   CREATE TYPE affiliation_enum AS ENUM (
-    'Student', 'Professor', 'Staff', 'Alumni', 'Other'
+    'Student', 'Professor', 'Staff', 'Alumni', 'Graduate Student', 'Other'
   );
 EXCEPTION
   WHEN duplicate_object THEN NULL;
@@ -40,6 +40,9 @@ CREATE TABLE IF NOT EXISTS users (
   email           VARCHAR(255) NOT NULL UNIQUE,
   password_hash   VARCHAR(255) NOT NULL,
   display_name    VARCHAR(255),
+  avatar_url      TEXT,
+  avatar_path     TEXT,
+  avatar_bucket   TEXT,
   affiliation     affiliation_enum NOT NULL,
   is_admin        BOOLEAN NOT NULL DEFAULT FALSE,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),

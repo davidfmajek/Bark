@@ -112,13 +112,29 @@ function getDisplayName(user) {
   const name = user?.display_name;
   if (name && String(name).trim()) return String(name).trim();
   const email = user?.email ?? '';
-  return email.split('@')[0] || 'User';
+  const emailName = String(email).split('@')[0]?.trim();
+  if (emailName) return emailName;
+  return 'User';
 }
 
 function getInitials(displayName) {
   const parts = displayName.trim().split(/\s+/);
   if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
   return (displayName.slice(0, 2) || 'U').toUpperCase();
+}
+
+function getAvatarUrl(user) {
+  const candidate = user?.avatar_url;
+  if (!candidate) return '';
+  const trimmed = String(candidate).trim();
+  return trimmed || '';
+}
+
+function getAffiliation(user) {
+  const value = user?.affiliation;
+  if (!value) return '';
+  const trimmed = String(value).trim();
+  return trimmed || '';
 }
 
 export function EstablishmentPage() {
@@ -142,6 +158,7 @@ export function EstablishmentPage() {
   const [reviewPhotosByReviewId, setReviewPhotosByReviewId] = useState({});
   /** @type {{ review: object; photos: { src: string; key: string }[]; index: number } | null} */
   const [reviewPhotoLightbox, setReviewPhotoLightbox] = useState(null);
+  const [brokenAvatars, setBrokenAvatars] = useState({});
 
   const { panels, photoCount, galleryMaxOffset } = useMemo(
     () => buildCollagePanels(galleryUrls, galleryOffset),
@@ -293,10 +310,18 @@ export function EstablishmentPage() {
         if (reviews.length === 0) return;
         try {
             setLoading(true);
-          const { data, error } = await supabase
+          let { data, error } = await supabase
             .from("users")
-            .select("*")
+            .select("user_id, display_name, email, avatar_url, affiliation")
             .in("user_id", reviews.map((r) => r.user_id));
+          if (error && String(error.message || '').toLowerCase().includes('avatar_url')) {
+            const fallback = await supabase
+              .from("users")
+              .select("user_id, display_name, email, affiliation")
+              .in("user_id", reviews.map((r) => r.user_id));
+            data = (fallback.data ?? []).map((u) => ({ ...u, avatar_url: '' }));
+            error = fallback.error;
+          }
           if (error) throw error;
           setUsers(data);
         }
@@ -592,17 +617,46 @@ export function EstablishmentPage() {
                 <div className="space-y-6">
                   {reviews.map((review, reviewIdx) => (
                     <div key={review.review_id} className={`p-6 rounded-xl ${dark ? 'bg-gray-900/40' : 'bg-gray-100'}`}>
+                      {(() => {
+                        const reviewUser = users.find((u) => u.user_id === review.user_id);
+                        const displayName = getDisplayName(reviewUser);
+                        const avatarUrl = getAvatarUrl(reviewUser);
+                        const affiliation = getAffiliation(reviewUser);
+                        const avatarBroken = brokenAvatars[String(review.user_id)] === true;
+                        return (
                       <div className="flex items-center gap-4 mb-4">
-                        <div className="w-12 h-12 rounded-full bg-[#ffbf3e] flex items-center justify-center text-white font-bold">
-                          {getInitials(getDisplayName(users.find((u) => u.user_id === review.user_id)))}
+                        <div className="w-12 h-12 overflow-hidden rounded-full bg-[#ffbf3e] ring-1 ring-white/15 flex items-center justify-center text-white font-bold">
+                          {avatarUrl && !avatarBroken ? (
+                            <img
+                              src={avatarUrl}
+                              alt={displayName}
+                              className="h-full w-full rounded-full object-cover"
+                              loading="lazy"
+                              onError={() =>
+                                setBrokenAvatars((prev) => ({
+                                  ...prev,
+                                  [String(review.user_id)]: true,
+                                }))
+                              }
+                            />
+                          ) : (
+                            getInitials(displayName)
+                          )}
                         </div>
                         <div>
-                          <h4 className="font-bold">{getDisplayName(users.find((u) => u.user_id === review.user_id))}</h4>
+                          <h4 className="font-bold leading-tight">{displayName}</h4>
+                          {affiliation && (
+                            <p className={`text-xs font-semibold leading-tight ${dark ? 'text-white/75' : 'text-black/65'}`}>
+                              {affiliation}
+                            </p>
+                          )}
                           <p className={`text-sm ${dark ? 'text-gray-400' : 'text-gray-500'}`}>
                             {formatRelativeReviewTime(review.updated_at)}
                           </p>
                         </div>
                       </div>
+                        );
+                      })()}
                       <p className={`leading-relaxed ${dark ? 'text-gray-300' : 'text-gray-700'}`}>
                         {review.body}
                       </p>
@@ -813,17 +867,44 @@ export function EstablishmentPage() {
                     dark ? 'border-white/10' : 'border-gray-200'
                   }`}
                 >
-                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#ffbf3e] text-sm font-bold text-black">
-                    {getInitials(
-                      getDisplayName(users.find((u) => u.user_id === reviewPhotoLightbox.review.user_id)),
-                    )}
-                  </div>
+                  {(() => {
+                    const reviewUser = users.find((u) => u.user_id === reviewPhotoLightbox.review.user_id);
+                    const displayName = getDisplayName(reviewUser);
+                    const avatarUrl = getAvatarUrl(reviewUser);
+                    const affiliation = getAffiliation(reviewUser);
+                    const avatarBroken = brokenAvatars[String(reviewPhotoLightbox.review.user_id)] === true;
+                    return (
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#ffbf3e] text-sm font-bold text-black">
+                        {avatarUrl && !avatarBroken ? (
+                          <img
+                            src={avatarUrl}
+                            alt={displayName}
+                            className="h-full w-full object-cover"
+                            loading="lazy"
+                            onError={() =>
+                              setBrokenAvatars((prev) => ({
+                                ...prev,
+                                [String(reviewPhotoLightbox.review.user_id)]: true,
+                              }))
+                            }
+                          />
+                        ) : (
+                          getInitials(displayName)
+                        )}
+                      </div>
+                    );
+                  })()}
                   <div className="min-w-0">
                     <p
                       className={`font-semibold ${dark ? 'text-[#ffbf3e]' : 'text-[#0073bb]'}`}
                     >
                       {getDisplayName(users.find((u) => u.user_id === reviewPhotoLightbox.review.user_id))}
                     </p>
+                    {affiliation && (
+                      <p className={`text-xs font-semibold ${dark ? 'text-white/70' : 'text-gray-600'}`}>
+                        {affiliation}
+                      </p>
+                    )}
                     <p className={`text-sm ${dark ? 'text-white/50' : 'text-gray-500'}`}>
                       {formatRelativeReviewTime(reviewPhotoLightbox.review.updated_at)}
                     </p>

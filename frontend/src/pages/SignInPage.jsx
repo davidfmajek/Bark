@@ -9,6 +9,12 @@ function isUmbcEmail(addr) {
   return /@umbc\.edu$/i.test((addr || '').trim());
 }
 
+function hasCompletedProfile(user) {
+  const displayName = user?.user_metadata?.display_name;
+  const affiliation = user?.user_metadata?.affiliation;
+  return Boolean((displayName || '').trim() && (affiliation || '').trim());
+}
+
 /** Set before OAuth from signup step 1; cleared after profile step or sign-out */
 const SIGNUP_GOOGLE_PENDING = 'bark_signup_google_pending';
 /** Set before OAuth from Sign In + Google so URL sync does not reset mode before we resolve profile */
@@ -42,6 +48,7 @@ export function SignInPage() {
 
     const resolve = async () => {
       const signedInWithGoogle = user.identities?.some((i) => i.provider === 'google');
+      const loginGooglePending = sessionStorage.getItem(LOGIN_GOOGLE_OAUTH_PENDING) === '1';
 
       if (signedInWithGoogle && !isUmbcEmail(user.email)) {
         sessionStorage.removeItem(SIGNUP_GOOGLE_PENDING);
@@ -64,14 +71,18 @@ export function SignInPage() {
       }
 
       if (signedInWithGoogle) {
-        const { data: profile } = await supabase
+        const { data: profile, error: profileError } = await supabase
           .from('users')
           .select('user_id')
           .eq('user_id', user.id)
           .maybeSingle();
         if (cancelled) return;
+        if (profileError) {
+          setError(profileError.message || 'Unable to verify your account profile right now.');
+          return;
+        }
         sessionStorage.removeItem(LOGIN_GOOGLE_OAUTH_PENDING);
-        if (!profile) {
+        if (!profile && !hasCompletedProfile(user) && !loginGooglePending) {
           setMode('signup');
           setSignupStep(2);
           setEmail(user.email ?? '');
@@ -141,6 +152,9 @@ export function SignInPage() {
               display_name: displayName.trim(),
               affiliation: affiliationValue,
               email: fresh.email,
+              avatar_url: fresh.user_metadata?.avatar_url || null,
+              avatar_path: fresh.user_metadata?.avatar_path || null,
+              avatar_bucket: fresh.user_metadata?.avatar_bucket || null,
               last_login: lastLogin,
             })
             .eq('user_id', fresh.id);
@@ -151,6 +165,9 @@ export function SignInPage() {
             email: fresh.email,
             password_hash: '[Supabase Auth]',
             display_name: displayName.trim(),
+            avatar_url: fresh.user_metadata?.avatar_url || null,
+            avatar_path: fresh.user_metadata?.avatar_path || null,
+            avatar_bucket: fresh.user_metadata?.avatar_bucket || null,
             affiliation: affiliationValue,
             is_admin: false,
             created_at: fresh.created_at,

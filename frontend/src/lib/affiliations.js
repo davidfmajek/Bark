@@ -3,9 +3,9 @@
 export const AFFILIATION_OPTIONS = [
   { value: 'Student', label: 'Student' },
   { value: 'Professor', label: 'Professor' },
-  { value: 'Prospective_Student', label: 'Prospective Student' },
-  { value: 'Incoming_Student', label: 'Incoming Student' },
-  { value: 'Parent', label: 'Parent' },
+  { value: 'Staff', label: 'Staff' },
+  { value: 'Alumni', label: 'Alumni' },
+  { value: 'Graduate Student', label: 'Graduate Student' },
   { value: 'Other', label: 'Other' },
 ];
 
