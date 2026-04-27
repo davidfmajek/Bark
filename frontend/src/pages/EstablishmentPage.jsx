@@ -384,11 +384,12 @@ export function EstablishmentPage() {
       if (reviews.length > 0) {
         try {
           setLoading(true);
+          const ids = reviews.map((r) => r.review_id).filter(Boolean);
           const { data, error } = await supabase
             .from("helpful_votes")
             .select("review_id, user_id")
-            .in("review_id", reviews.map((r) => r.review_id))
-            .eq("user_id", user.id);
+            .in("review_id", ids)
+            //.eq("user_id", user.id);
           if (error) {
             console.error("Error fetching helpful votes: ", error.message);
             setLikeButton(new Array(reviews.length).fill(false));
@@ -397,8 +398,11 @@ export function EstablishmentPage() {
           const likeToggles = new Array(reviews.length).fill(false);
           likeToggles.forEach((_, idx) => {
             const reviewID = reviews[idx].review_id;
-            likeToggles[idx] = data.some((like) => like.review_id == reviewID && like.user_id == user.id);
-          });
+            likeToggles[idx] = data.some((like) => { 
+	          return like.review_id == reviewID && like.user_id == user.id;
+	        })
+	      return likeToggles[idx];
+        });
 
           setLikeButton(likeToggles);
         }
