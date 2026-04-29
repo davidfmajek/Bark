@@ -50,6 +50,8 @@ export function Header() {
   const { user, isAuthenticated, signOut } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
+  const [canAccessAdmin, setCanAccessAdmin] = useState(false);
+  const [dbAvatarUrl, setDbAvatarUrl] = useState('');
   const [profileOpen, setProfileOpen] = useState(false);
   const profileRef = useRef(null);
   const [establishments, setEstablishments] = useState([]);
@@ -78,6 +80,54 @@ export function Header() {
     })();
     return () => { mounted = false; };
   }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      if (!isAuthenticated || !user?.id) {
+        if (mounted) setCanAccessAdmin(false);
+        return;
+      }
+      const { data, error } = await supabase
+        .from('users')
+        .select('role, is_admin')
+        .eq('user_id', user.id)
+        .single();
+      if (!mounted) return;
+      if (error && String(error.message || '').toLowerCase().includes('role') && String(error.message || '').toLowerCase().includes('does not exist')) {
+        const fallback = await supabase
+          .from('users')
+          .select('is_admin')
+          .eq('user_id', user.id)
+          .single();
+        if (mounted) setCanAccessAdmin(!!fallback.data?.is_admin);
+        return;
+      }
+      const role = String(data?.role || '').toLowerCase();
+      // Role is source-of-truth when available; is_admin is legacy fallback only.
+      if (role === 'admin' || role === 'mod') setCanAccessAdmin(true);
+      else setCanAccessAdmin(false);
+    })();
+    return () => { mounted = false; };
+  }, [isAuthenticated, user?.id]);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      if (!isAuthenticated || !user?.id) {
+        if (mounted) setDbAvatarUrl('');
+        return;
+      }
+      const { data, error } = await supabase
+        .from('users')
+        .select('avatar_url')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (!mounted || error) return;
+      setDbAvatarUrl(data?.avatar_url || '');
+    })();
+    return () => { mounted = false; };
+  }, [isAuthenticated, user?.id]);
 
   useEffect(() => {
     if (!profileOpen) return;
@@ -156,7 +206,7 @@ export function Header() {
   const isDark = theme === 'dark';
   const displayName = getDisplayName(user);
   const initials = getInitials(displayName);
-  const avatarUrl = user?.user_metadata?.avatar_url;
+  const avatarUrl = dbAvatarUrl || user?.user_metadata?.avatar_url || user?.user_metadata?.picture || '';
 
   const linkCls = isDark
     ? 'font-body text-sm font-medium text-white/85 hover:text-[#f5bf3e]'
@@ -366,6 +416,16 @@ export function Header() {
                   >
                     Edit profile
                   </Link>
+                  {canAccessAdmin && (
+                    <Link
+                      to="/admin"
+                      onClick={() => setProfileOpen(false)}
+                      className={`block px-4 py-2 font-body text-sm font-medium transition-colors ${isDark ? 'text-[#f5bf3e] hover:bg-white/10' : 'text-[#D4A017] hover:bg-black/5'}`}
+                      role="menuitem"
+                    >
+                      Admin dashboard
+                    </Link>
+                  )}
                   <button
                     type="button"
                     onClick={handleSignOut}

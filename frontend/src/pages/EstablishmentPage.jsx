@@ -904,9 +904,9 @@ export function EstablishmentPage() {
                     >
                       {getDisplayName(users.find((u) => u.user_id === reviewPhotoLightbox.review.user_id))}
                     </p>
-                    {affiliation && (
+                    {getAffiliation(users.find((u) => u.user_id === reviewPhotoLightbox.review.user_id)) && (
                       <p className={`text-xs font-semibold ${dark ? 'text-white/70' : 'text-gray-600'}`}>
-                        {affiliation}
+                        {getAffiliation(users.find((u) => u.user_id === reviewPhotoLightbox.review.user_id))}
                       </p>
                     )}
                     <p className={`text-sm ${dark ? 'text-white/50' : 'text-gray-500'}`}>

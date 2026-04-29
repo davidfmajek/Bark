@@ -11,6 +11,7 @@ import { MyReviewsPage } from './pages/MyReviewsPage';
 import { MapPage } from './pages/MapPage';
 import { WriteAReviewPage } from './pages/WriteAReviewPage';
 import { EstablishmentPage } from './pages/EstablishmentPage';
+import { AdminDashboardPage } from './pages/AdminDashboardPage';
 function RequireAuth({ children }) {
   const { loading, isAuthenticated } = useAuth();
 
@@ -85,6 +86,14 @@ function AppRoutes() {
           )}
         />
         <Route path="/restaurants/:slug" element={<EstablishmentPage />} />
+        <Route
+          path="/admin"
+          element={(
+            <RequireAuth>
+              <AdminDashboardPage />
+            </RequireAuth>
+          )}
+        />
         <Route path="/map" element={<MapPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

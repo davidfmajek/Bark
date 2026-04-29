@@ -96,7 +96,9 @@ useEffect(() => {
       }));
 
       // 2. Sort the data by name alphabetically
-      const sortedData = flattenedData.sort((a, b) => {
+      const activeOnly = flattenedData.filter((row) => row?.is_active === true);
+
+      const sortedData = activeOnly.sort((a, b) => {
         const nameA = a.name?.toLowerCase() || '';
         const nameB = b.name?.toLowerCase() || '';
         return nameA.localeCompare(nameB);

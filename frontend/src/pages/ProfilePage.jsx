@@ -122,18 +122,15 @@ export function ProfilePage() {
         const provider = user.app_metadata?.provider || 'email';
         const hasEmailIdentity = (user.identities || []).some((identity) => identity.provider === 'email');
         const metadataHasPassword = user.user_metadata?.has_password === true;
-        const metadataAvatarUrl = user.user_metadata?.avatar_url || '';
+        const metadataAvatarUrl = user.user_metadata?.avatar_url || user.user_metadata?.picture || '';
         const metadataAvatarPath = user.user_metadata?.avatar_path || '';
         const metadataAvatarBucket = user.user_metadata?.avatar_bucket || PROFILE_AVATAR_BUCKET;
         setUserProvider(provider);
         setHasEmailPassword(hasEmailIdentity || metadataHasPassword);
-        setAvatarUrl(metadataAvatarUrl);
-        setAvatarPath(metadataAvatarPath);
-        setAvatarBucket(metadataAvatarBucket);
 
         const { data, error } = await supabase
           .from('users')
-          .select('display_name, affiliation')
+          .select('display_name, affiliation, avatar_url, avatar_path, avatar_bucket')
           .eq('user_id', user.id)
           .limit(1);
         if (error) throw error;
@@ -147,14 +144,20 @@ export function ProfilePage() {
         const loadedAffiliation = profileRow?.affiliation
           || user.user_metadata?.affiliation
           || '';
+        const loadedAvatarUrl = profileRow?.avatar_url || metadataAvatarUrl;
+        const loadedAvatarPath = profileRow?.avatar_path || metadataAvatarPath;
+        const loadedAvatarBucket = profileRow?.avatar_bucket || metadataAvatarBucket;
+        setAvatarUrl(loadedAvatarUrl);
+        setAvatarPath(loadedAvatarPath);
+        setAvatarBucket(loadedAvatarBucket);
         setDisplayName(loadedDisplayName);
         setAffiliation(loadedAffiliation);
         setInitialProfile({
           displayName: loadedDisplayName,
           affiliation: loadedAffiliation,
-          avatarUrl: metadataAvatarUrl,
-          avatarPath: metadataAvatarPath,
-          avatarBucket: metadataAvatarBucket,
+          avatarUrl: loadedAvatarUrl,
+          avatarPath: loadedAvatarPath,
+          avatarBucket: loadedAvatarBucket,
         });
       } catch (error) {
         setMessage({ type: 'error', text: error.message || 'Failed to load profile settings.' });
