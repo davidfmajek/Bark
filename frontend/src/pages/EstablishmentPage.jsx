@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase.js';
 import {
   Clock,
@@ -83,6 +83,7 @@ function CollageCell({ panel, index, panelBroken, setPanelBroken, dark, classNam
       {/*panel && !broken ? (*/}
       {panel ? (
         <img
+          key={`${panel.src}-${index}`}
           alt=""
           src={panel.src}
           className={`w-full object-cover ${className}`}
@@ -140,6 +141,7 @@ function getAffiliation(user) {
 export function EstablishmentPage() {
   const { slug } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { theme } = useTheme();
   const { user, isAuthenticated } = useAuth();
   const dark = theme === 'dark';
@@ -154,6 +156,8 @@ export function EstablishmentPage() {
   const [galleryModalOpen, setGalleryModalOpen] = useState(false);
   const [galleryUrls, setGalleryUrls] = useState([]);
   const [galleryLoading, setGalleryLoading] = useState(true);
+  /** Bumps when user returns to the tab so we re-probe Storage (e.g. after admin removes hero). */
+  const [galleryRefreshNonce, setGalleryRefreshNonce] = useState(0);
   /** @type {Record<string, { src: string; key: string }[]>} */
   const [reviewPhotosByReviewId, setReviewPhotosByReviewId] = useState({});
   /** @type {{ review: object; photos: { src: string; key: string }[]; index: number } | null} */
@@ -190,7 +194,21 @@ export function EstablishmentPage() {
     return () => {
       cancelled = true;
     };
-  }, [establishment?.establishment_id, Object.values(reviewPhotosByReviewId).length]);
+  }, [
+    establishment?.establishment_id,
+    location.key,
+    galleryRefreshNonce,
+    Object.values(reviewPhotosByReviewId).length,
+  ]);
+
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState !== 'visible' || !establishment?.establishment_id) return;
+      setGalleryRefreshNonce((n) => n + 1);
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, [establishment?.establishment_id]);
 
   useEffect(() => {
     setGalleryOffset(0);
@@ -492,7 +510,7 @@ export function EstablishmentPage() {
                   setPanelBroken={setPanelBroken}
                   dark={dark}
                   className="h-full min-h-[9rem]"
-                />heroesData?.publicUrl]
+                />
               </div>
             </div>
           </div>

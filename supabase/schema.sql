@@ -53,8 +53,6 @@ CREATE TABLE IF NOT EXISTS establishments (
   establishment_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name            VARCHAR(255) NOT NULL,
   description     TEXT,
-  logo_path       VARCHAR(512),
-  header_image_path VARCHAR(512),
   category        category_enum NOT NULL,
   building_name   VARCHAR(255),
   latitude        DECIMAL(10, 7) NOT NULL,

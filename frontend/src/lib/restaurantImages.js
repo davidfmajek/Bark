@@ -263,6 +263,7 @@ async function probePublicImageUrl(url) {
       method: 'GET',
       mode: 'cors',
       credentials: 'omit',
+      cache: 'no-store',
       headers: { Range: 'bytes=0-0' },
       signal: controller.signal,
     });
@@ -272,6 +273,7 @@ async function probePublicImageUrl(url) {
       method: 'GET',
       mode: 'cors',
       credentials: 'omit',
+      cache: 'no-store',
       signal: controller.signal,
     });
 
@@ -293,6 +295,7 @@ async function probePublicImageUrl(url) {
       method: 'HEAD',
       mode: 'cors',
       credentials: 'omit',
+      cache: 'no-store',
       signal: controller.signal,
     });
 
@@ -426,26 +429,36 @@ function mergeBrandThenReviewUrls(brandUrls, reviewUrls, max) {
   return out;
 }
 
-// Async gallery: restaurant-logos (heroes/logos + explicit/header) first, then review-media.
-export async function fetchEstablishmentGalleryUrls(supabase, establishment) {
-  const heroes = supabase.storage.from("Resturant-logos").getPublicUrl(`heroes/${establishment?.establishment_id}.png`);
-  const logos = supabase.storage.from("Resturant-logos").getPublicUrl(`logos/${establishment?.establishment_id}.png`);
+const BRAND_SLOT_EXTENSIONS = ['png', 'jpg', 'jpeg', 'webp'];
 
-  const heroResult = await fetch(heroes.data.publicUrl);
-  const heroExists = heroResult.ok;
-  const logoResult = await fetch(logos.data.publicUrl);
-  const logoExists = logoResult.ok;
+/** First public URL under logos/ or heroes/ that actually returns an image (matches admin upload paths). */
+async function resolveExistingBrandSlotUrl(supabase, folder, establishmentId) {
+  const id = String(establishmentId ?? '').trim();
+  if (!id || !supabase?.storage || !STORAGE_BUCKET) return null;
+  for (const ext of BRAND_SLOT_EXTENSIONS) {
+    const path = `${folder}/${id}.${ext}`;
+    const { data } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(path);
+    const url = data?.publicUrl;
+    if (url && (await probePublicImageUrl(url))) return url;
+  }
+  return null;
+}
+
+// Async gallery: only include logo/hero URLs that exist in Storage (avoids showing removed heroes).
+export async function fetchEstablishmentGalleryUrls(supabase, establishment) {
+  const id = establishment?.establishment_id;
+  const [logoUrl, heroUrl] = await Promise.all([
+    resolveExistingBrandSlotUrl(supabase, 'logos', id),
+    resolveExistingBrandSlotUrl(supabase, 'heroes', id),
+  ]);
 
   const urls = [];
-  if (heroExists == false && logoExists == true) {
-    urls.push(logos.data.publicUrl, logos.data.publicUrl, logos.data.publicUrl);
+  if (logoUrl && heroUrl) {
+    urls.push(logoUrl, heroUrl, logoUrl);
+  } else if (logoUrl && !heroUrl) {
+    urls.push(logoUrl, logoUrl, logoUrl);
+  } else if (heroUrl && !logoUrl) {
+    urls.push(heroUrl, heroUrl, heroUrl);
   }
-  else if (heroExists == true && logoExists == false) {
-    urls.push(heroes.data.publicUrl, heroes.data.publicUrl, heroes.data.publicUrl);
-  }
-  else {
-    urls.push(logos.data.publicUrl, heroes.data.publicUrl, logos.data.publicUrl);
-  }
-
   return urls;
 }
