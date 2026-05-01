@@ -1,12 +1,12 @@
 import { useState, useRef, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../lib/supabase';
 import { ButtonGroup } from './ui/button-group';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
-import { Search } from 'lucide-react';
+import { Menu, Search, X } from 'lucide-react';
 
 function SunIcon({ className = '' }) {
   return (
@@ -49,6 +49,7 @@ function getInitials(displayName) {
 export function Header() {
   const { user, isAuthenticated, signOut } = useAuth();
   const { theme, toggleTheme } = useTheme();
+  const location = useLocation();
   const navigate = useNavigate();
   const [canAccessAdmin, setCanAccessAdmin] = useState(false);
   const [dbAvatarUrl, setDbAvatarUrl] = useState('');
@@ -62,6 +63,7 @@ export function Header() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchDropdownOpen, setSearchDropdownOpen] = useState(false);
   const searchRef = useRef(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const searchTrimmed = searchQuery.trim().toLowerCase();
   const searchMatches = searchTrimmed
@@ -145,6 +147,10 @@ export function Header() {
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
   }, []);
+
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [location.pathname]);
 
   const clearRestaurantsTimeouts = () => {
     if (restaurantsOpenTimeout.current) {
@@ -243,10 +249,16 @@ export function Header() {
   const restaurantsItemCls = isDark
     ? 'block rounded-lg px-3 py-2 font-body text-sm font-medium text-white/90 transition-colors hover:bg-white/10'
     : 'block rounded-lg px-3 py-2 font-body text-sm font-medium text-black transition-colors hover:bg-black/5';
+  const mobileMenuButtonCls = isDark
+    ? 'rounded-full p-2 text-white/85 transition-colors hover:bg-white/10 sm:hidden'
+    : 'rounded-full p-2 text-black/80 transition-colors hover:bg-black/5 sm:hidden';
+  const mobilePanelCls = isDark
+    ? 'border-t border-white/10 bg-[#0f1219]/95 px-4 py-3 sm:hidden'
+    : 'border-t border-black/10 bg-white/95 px-4 py-3 sm:hidden';
 
   return (
     <header className={headerCls}>
-      <div className="mx-auto flex h-14 max-w-6xl items-center gap-4 px-4 sm:gap-6 sm:px-6">
+      <div className="mx-auto flex h-14 max-w-6xl items-center gap-3 px-4 sm:gap-6 sm:px-6">
         <Link to="/" className={`shrink-0 ${logoCls}`} aria-label="BARK home">
           <img src="/logo.png" alt="" className="h-8 w-auto" />
           <span className="font-display text-xl font-bold tracking-tight">BARK!</span>
@@ -371,6 +383,16 @@ export function Header() {
         <div className="flex shrink-0 items-center gap-2">
           <button
             type="button"
+            onClick={() => setMobileMenuOpen((o) => !o)}
+            className={mobileMenuButtonCls}
+            aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}
+            aria-expanded={mobileMenuOpen}
+            aria-controls="mobile-nav-panel"
+          >
+            {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </button>
+          <button
+            type="button"
             onClick={toggleTheme}
             className={toggleCls}
             title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
@@ -395,7 +417,7 @@ export function Header() {
                     <span className={`text-xs font-bold ${isDark ? 'text-white/90' : 'text-black/80'}`}>{initials}</span>
                   )}
                 </span>
-                <span className={profileTextCls}>{displayName}</span>
+                <span className={`hidden sm:inline ${profileTextCls}`}>{displayName}</span>
                 <ChevronDownIcon className={`h-4 w-4 shrink-0 transition-transform ${profileOpen ? 'rotate-180' : ''} ${isDark ? 'text-white/70' : 'text-black/60'}`} />
               </button>
               {profileOpen && (
@@ -445,6 +467,45 @@ export function Header() {
           )}
         </div>
       </div>
+      {mobileMenuOpen && (
+        <div id="mobile-nav-panel" className={mobilePanelCls}>
+          <div ref={searchRef} className="relative mb-3 min-w-0">
+            <form onSubmit={handleSearchSubmit} className="w-full" role="search" aria-label="Search restaurants">
+              <ButtonGroup className={`h-9 w-full rounded-lg ${searchGroupCls}`}>
+                <Input
+                  type="search"
+                  placeholder="Restaurants, food..."
+                  value={searchQuery}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setSearchDropdownOpen(true);
+                  }}
+                  onFocus={() => searchTrimmed && setSearchDropdownOpen(true)}
+                  className="min-w-0 flex-1 border-0 shadow-none focus-visible:ring-0"
+                  aria-label="Search restaurants"
+                />
+                <Button
+                  type="submit"
+                  variant="default"
+                  size="icon"
+                  className={isDark ? 'h-9 shrink-0 rounded-l-none !rounded-r-lg bg-[#f5bf3e] text-[#16181f] hover:bg-[#ffd15e]' : 'h-9 shrink-0 rounded-l-none !rounded-r-lg bg-[#D4A017] text-black hover:bg-[#c4920f]'}
+                  aria-label="Search"
+                >
+                  <Search className="h-4 w-4" />
+                </Button>
+              </ButtonGroup>
+            </form>
+          </div>
+          <nav className="grid grid-cols-2 gap-2" aria-label="Mobile">
+            <Link to="/restaurants" className={linkCls}>Restaurants</Link>
+            <Link to="/writeareview" className={linkCls}>Write Review</Link>
+            <Link to="/map" className={linkCls}>Map</Link>
+            {isAuthenticated && <Link to="/my-reviews" className={linkCls}>My Reviews</Link>}
+            {isAuthenticated && <Link to="/profile" className={linkCls}>Profile</Link>}
+            {isAuthenticated && canAccessAdmin && <Link to="/admin" className={linkCls}>Admin</Link>}
+          </nav>
+        </div>
+      )}
     </header>
   );
 }

@@ -379,7 +379,7 @@ export function MyReviewsPage() {
                       </div>
 
                       {photos.length > 0 ? (
-                        <div className="mt-3 grid max-w-md grid-cols-3 gap-2">
+                        <div className="mt-3 grid max-w-md grid-cols-2 gap-2 sm:grid-cols-3">
                           {photos.map((p) => (
                             <div
                               key={p.key}

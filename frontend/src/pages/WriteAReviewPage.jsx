@@ -492,7 +492,7 @@ function ReviewFormStep({
               <button
                 type="submit"
                 disabled={!canPost}
-                className="inline-flex min-w-[200px] items-center justify-center rounded-lg bg-[#ffbf3e] px-8 py-3 text-base font-semibold text-black shadow-sm transition hover:bg-[#f5b635] disabled:cursor-not-allowed disabled:opacity-45"
+                className="inline-flex w-full items-center justify-center rounded-lg bg-[#ffbf3e] px-8 py-3 text-base font-semibold text-black shadow-sm transition hover:bg-[#f5b635] disabled:cursor-not-allowed disabled:opacity-45 sm:w-auto sm:min-w-[200px]"
               >
                 {saving ? 'Posting…' : 'Post Review'}
               </button>

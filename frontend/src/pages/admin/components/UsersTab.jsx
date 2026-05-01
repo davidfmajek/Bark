@@ -111,12 +111,12 @@ export function UsersTab({ dark, verifyPrivileged, onAction, currentUserId, acto
         </div>
       )}
       {error && <div className={`mb-4 rounded-xl border px-3 py-2 text-sm ${dark ? 'border-red-400/30 bg-red-500/10 text-red-300' : 'border-red-300 bg-red-50 text-red-700'}`}>{error}</div>}
-      <div className="mb-5 flex items-center gap-3">
+      <div className="mb-5 flex flex-wrap items-center gap-3">
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search by name or email..."
-          className={`flex-1 rounded-xl border px-4 py-2.5 text-sm outline-none transition-colors ${
+          className={`w-full min-w-0 flex-1 rounded-xl border px-4 py-2.5 text-sm outline-none transition-colors sm:w-auto ${
             dark
               ? 'border-white/10 bg-[#1e2430] text-white placeholder:text-white/30 focus:border-[#f5bf3e]/50'
               : 'border-black/10 bg-gray-50 text-black placeholder:text-black/35 focus:border-[#D4A017]/50'

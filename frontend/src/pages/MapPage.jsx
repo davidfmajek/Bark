@@ -130,7 +130,7 @@ export function MapPage() {
               maxBoundsViscosity={1}
               minZoom={15}
               maxZoom={19}
-              className="h-[95vh] min-h-[460px] w-full"
+              className="h-[55vh] min-h-[320px] w-full sm:h-[70vh] sm:min-h-[420px] lg:h-[85vh]"
             >
               <TileLayer
                 attribution='&copy; OpenStreetMap contributors'
@@ -172,7 +172,7 @@ export function MapPage() {
             </MapContainer>
           </div>
 
-          <aside className={`flex max-h-[85vh] min-h-[460px] flex-col rounded-[2rem] border p-5 backdrop-blur ${dark ? 'border-white/10 bg-white/[0.05]' : 'border-black/10 bg-white/90'}`}>
+          <aside className={`flex max-h-[70vh] min-h-[320px] flex-col rounded-[2rem] border p-5 backdrop-blur sm:max-h-[85vh] sm:min-h-[420px] ${dark ? 'border-white/10 bg-white/[0.05]' : 'border-black/10 bg-white/90'}`}>
             <h2 className={`font-display text-2xl font-black tracking-tight ${dark ? 'text-white' : 'text-black'}`}>
               Dining Locations
             </h2>

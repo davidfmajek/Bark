@@ -199,9 +199,9 @@ export function AdminDashboardPage() {
     <div className={`relative min-h-[calc(100vh-3.5rem)] ${pageBg}`}>
       {dark && <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top_left,_rgba(245,191,62,0.06),_transparent_50%)]" />}
       <div className="relative z-10 mx-auto max-w-5xl px-4 py-10 sm:px-6">
-        <div className="mb-8 flex items-center gap-4">
+        <div className="mb-8 flex flex-wrap items-start gap-3 sm:items-center sm:gap-4">
           <div><h1 className={`text-2xl font-bold tracking-tight ${dark ? 'text-white' : 'text-black'}`}>Admin Dashboard</h1><p className={`text-sm ${mutedText}`}>BARK content moderation &amp; management</p></div>
-          <button onClick={reloadMeta} className={`ml-auto rounded-xl px-3 py-2 text-sm font-semibold ${dark ? 'bg-[#f5bf3e] text-black hover:bg-[#ffd15e]' : 'bg-[#D4A017] text-white hover:bg-[#bf9210]'}`}>Refresh All</button>
+          <button onClick={reloadMeta} className={`w-full rounded-xl px-3 py-2 text-sm font-semibold sm:ml-auto sm:w-auto ${dark ? 'bg-[#f5bf3e] text-black hover:bg-[#ffd15e]' : 'bg-[#D4A017] text-white hover:bg-[#bf9210]'}`}>Refresh All</button>
         </div>
         {globalError && <div className={`mb-6 rounded-xl border px-3 py-2 text-sm ${dark ? 'border-red-400/30 bg-red-500/10 text-red-300' : 'border-red-300 bg-red-50 text-red-700'}`}>{globalError}</div>}
         <div className="mb-8 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
@@ -212,10 +212,10 @@ export function AdminDashboardPage() {
             </div>
           ))}
         </div>
-        <div className={`mb-6 flex gap-1 rounded-2xl border p-1 ${dark ? 'border-white/8 bg-[#161b26]' : 'border-black/8 bg-gray-50'}`}>
+        <div className={`mb-6 flex flex-wrap gap-1 rounded-2xl border p-1 ${dark ? 'border-white/8 bg-[#161b26]' : 'border-black/8 bg-gray-50'}`}>
           {visibleTabs.map(({ id, label, Icon }) => (
-            <button key={id} onClick={() => setActiveTab(id)} className={`flex flex-1 items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-medium transition-all ${activeTab === id ? (dark ? 'bg-[#f5bf3e] text-black shadow-sm' : 'bg-[#D4A017] text-white shadow-sm') : (dark ? 'text-white/55 hover:text-white/80' : 'text-black/50 hover:text-black/70')}`}>
-              <Icon className="h-4 w-4" /><span className="hidden md:inline">{label}</span>
+            <button key={id} onClick={() => setActiveTab(id)} className={`flex min-w-[9rem] flex-1 items-center justify-center gap-2 rounded-xl px-2 py-2.5 text-sm font-medium transition-all sm:min-w-0 ${activeTab === id ? (dark ? 'bg-[#f5bf3e] text-black shadow-sm' : 'bg-[#D4A017] text-white shadow-sm') : (dark ? 'text-white/55 hover:text-white/80' : 'text-black/50 hover:text-black/70')}`}>
+              <Icon className="h-4 w-4" /><span>{label}</span>
             </button>
           ))}
         </div>

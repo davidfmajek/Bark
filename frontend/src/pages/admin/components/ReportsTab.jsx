@@ -92,7 +92,7 @@ export function ReportsTab({ dark, verifyPrivileged, onAction }) {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search reporter or establishment..."
-          className={`min-w-[220px] flex-1 rounded-xl border px-4 py-2 text-sm outline-none ${
+          className={`w-full min-w-0 flex-1 rounded-xl border px-4 py-2 text-sm outline-none sm:min-w-[220px] ${
             dark ? 'border-white/10 bg-[#1f2532] text-white placeholder:text-white/35' : 'border-black/10 bg-white text-black placeholder:text-black/35'
           }`}
         />

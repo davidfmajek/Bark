@@ -448,7 +448,7 @@ export function EstablishmentPage() {
 
   if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center">
+      <div className="flex min-h-[calc(100vh-3.5rem)] items-center justify-center">
         <Loader2 className="w-10 h-10 animate-spin text-[#ffbf3e]" />
       </div>
     );
@@ -456,7 +456,7 @@ export function EstablishmentPage() {
 
   if (!establishment) {
     return (
-      <div className="flex flex-col items-center justify-center h-screen space-y-4">
+      <div className="flex min-h-[calc(100vh-3.5rem)] flex-col items-center justify-center space-y-4">
         <h2 className="text-2xl font-bold">Establishment not found</h2>
         <Link to="/restaurants" className="text-[#ffbf3e] hover:underline font-bold">
           Return to UMBC Establishments
@@ -686,7 +686,7 @@ export function EstablishmentPage() {
                         const photos = reviewPhotosByReviewId[String(review.review_id)] ?? [];
                         if (photos.length === 0) return null;
                         return (
-                          <div className="mt-4 grid grid-cols-3 gap-2 sm:max-w-md">
+                          <div className="mt-4 grid grid-cols-2 gap-2 sm:max-w-md sm:grid-cols-3">
                             {photos.map((p, photoIdx) => (
                               <button
                                 key={p.key}
