@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
+import { useEffect, useMemo, useState, useRef } from 'react';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase.js';
 import {
   Clock,
@@ -14,11 +14,142 @@ import {
   Images,
   X,
   ThumbsUp,
+  Trash2,
+  Pen,
 } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from "../contexts/AuthContext";
 import { fetchEstablishmentGalleryUrls, resolveReviewImageForDisplay } from '../lib/restaurantImages.js';
-import { formatRelativeReviewTime } from '../lib/utils.js';
+import { formatRelativeReviewTime, formatTo12Hour } from '../lib/utils.js';
+
+
+
+const StarFilter = ({ value, onChange, dark }) => {
+  return (
+    <div className="flex items-center gap-1 bg-black/5 dark:bg-white/5 p-1.5 px-3 rounded-full">
+      {/* "All" button to reset the filter */}
+      <button
+        onClick={() => onChange('all')}
+        className={`text-xs font-bold mr-2 uppercase transition-colors ${
+          value === 'all' 
+            ? (dark ? 'text-white' : 'text-black') 
+            : 'text-gray-400 hover:text-gray-500'
+        }`}
+      >
+        All
+      </button>
+
+      {/* The Stars */}
+      <div className="flex gap-0.5">
+        {[1, 2, 3, 4, 5].map((num) => (
+          <button
+            key={num}
+            onClick={() => onChange(num)}
+            className="transition-transform active:scale-90"
+          >
+            <span className={`text-xl ${
+              // If current star is less than or equal to selection, highlight it
+              value !== 'all' && num <= value 
+                ? 'text-yellow-400' 
+                : 'text-gray-300 dark:text-gray-600'
+            }`}>
+              ★
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+};
+const CustomDropdown = ({ label, value, options, onChange, dark, colorClass }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const selectedOption = options.find(opt => opt.value === value);
+
+  return (
+    <div className="relative" ref={dropdownRef}>
+      {/* Trigger Button */}
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className={`flex items-center gap-1 font-bold text-sm focus:outline-none transition-opacity hover:opacity-80 ${colorClass}`}
+      >
+        {selectedOption?.label || label}
+        <span className={`transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}>
+          ▼
+        </span>
+      </button>
+
+      {/* Dropdown Menu */}
+      {isOpen && (
+        <div className={`absolute z-50 mt-2 min-w-[140px] rounded-xl shadow-2xl overflow-hidden border ${
+          dark 
+            ? 'bg-[#161b26] border-white/10 text-white' 
+            : 'bg-white border-black/5 text-gray-700'
+        }`}>
+          {options.map((opt) => (
+            <div
+              key={opt.value}
+              onClick={() => {
+                onChange(opt.value);
+                setIsOpen(false);
+              }}
+              className={`px-4 py-2 text-sm cursor-pointer transition-colors ${
+                dark ? 'hover:bg-blue-800' : 'hover:bg-gray-100'
+              } ${value === opt.value ? (dark ? 'bg-blue-900' : 'bg-gray-50') : ''}`}
+            >
+              {opt.label}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+function Stars({ rating, dark }) {
+  const safeRating = Number.isFinite(rating) ? rating : 0;
+  const rounded = Math.round(safeRating * 10) / 10;
+  const filledCount = Math.max(0, Math.min(5, Math.round(safeRating)));
+
+  return (
+    <div className={`flex items-center gap-1 ${dark ? 'text-[#f5bf3e]' : 'text-[#D4A017]'}`}>
+      <div className="flex items-center gap-0.5" aria-label={`Rating: ${rounded} out of 5`}>
+        {Array.from({ length: 5 }).map((_, i) => {
+          const filled = i < filledCount;
+          return (
+            <svg
+              key={i}
+              viewBox="0 0 24 24"
+              className={`h-3.5 w-3.5 ${filled ? 'opacity-100' : 'opacity-25'}`}
+              fill={filled ? 'currentColor' : 'none'}
+              stroke="currentColor"
+              strokeWidth="1.5"
+              aria-hidden
+            >
+              <path d="M12 17.3l-6.18 3.7 1.64-7.03L2 9.24l7.19-.61L12 2l2.81 6.63 7.19.61-5.46 4.73 1.64 7.03z" />
+            </svg>
+          );
+        })}
+      </div>
+      <span className={`ml-1 text-xs font-semibold ${dark ? 'text-[#f5bf3e]' : 'text-[#D4A017]'}`}>
+        {rounded}
+      </span>
+    </div>
+  );
+}
+// Add this near your other functions (above the return)
 
 function buildCollagePanels(allUrls, offset) {
   const u = allUrls.filter(Boolean);
@@ -83,7 +214,6 @@ function CollageCell({ panel, index, panelBroken, setPanelBroken, dark, classNam
       {/*panel && !broken ? (*/}
       {panel ? (
         <img
-          key={`${panel.src}-${index}`}
           alt=""
           src={panel.src}
           className={`w-full object-cover ${className}`}
@@ -141,11 +271,11 @@ function getAffiliation(user) {
 export function EstablishmentPage() {
   const { slug } = useParams();
   const navigate = useNavigate();
-  const location = useLocation();
   const { theme } = useTheme();
   const { user, isAuthenticated } = useAuth();
   const dark = theme === 'dark';
-
+  const [editingReviewId, setEditingReviewId] = useState(null);
+  const [editBuffer, setEditBuffer] = useState("");
   const [establishment, setEstablishment] = useState(null);
   const [users, setUsers] = useState([]);
   const [reviews, setReviews] = useState([]);
@@ -156,19 +286,88 @@ export function EstablishmentPage() {
   const [galleryModalOpen, setGalleryModalOpen] = useState(false);
   const [galleryUrls, setGalleryUrls] = useState([]);
   const [galleryLoading, setGalleryLoading] = useState(true);
-  /** Bumps when user returns to the tab so we re-probe Storage (e.g. after admin removes hero). */
-  const [galleryRefreshNonce, setGalleryRefreshNonce] = useState(0);
+  const [hours, setHours] = useState([]);
+  const [filterStar, setFilterStar] = useState('all');
+const [filterTime, setFilterTime] = useState('all');
+const [sortType, setSortType] = useState('recency-desc'); // Default: Newest first
   /** @type {Record<string, { src: string; key: string }[]>} */
   const [reviewPhotosByReviewId, setReviewPhotosByReviewId] = useState({});
   /** @type {{ review: object; photos: { src: string; key: string }[]; index: number } | null} */
   const [reviewPhotoLightbox, setReviewPhotoLightbox] = useState(null);
   const [brokenAvatars, setBrokenAvatars] = useState({});
-
+  const [editRating, setEditRating] = useState(0);
   const { panels, photoCount, galleryMaxOffset } = useMemo(
     () => buildCollagePanels(galleryUrls, galleryOffset),
     [galleryUrls, galleryOffset, reviewPhotosByReviewId],
   );
+  const handleUpdateReview = async (reviewId) => {
+  if (!editBuffer.trim()) return;
 
+  try {
+    const { error } = await supabase
+      .from('reviews')
+      .update({ 
+        body: editBuffer, 
+        rating: editRating, // Send the new star count
+        updated_at: new Date().toISOString() 
+      })
+      .eq('review_id', reviewId);
+
+    if (error) throw error;
+
+    // Update the local state so the UI updates the stars and text immediately
+    setReviews(prev => prev.map(r => 
+      r.review_id === reviewId ? { ...r, body: editBuffer, rating: editRating } : r
+    ));
+
+    setEditingReviewId(null);
+  } catch (error) {
+    console.error("Error:", error.message);
+  }
+};
+const handleDeleteReview = async (reviewId) => {
+  const confirmed = window.confirm("Are you sure? This will permanently delete the review and all photos.");
+  if (!confirmed) return;
+
+  try {
+    // 1. List all files in the specific folder for this review
+    const folderPath = `review-images/${reviewId}`;
+    const { data: files, error: listError } = await supabase
+      .storage
+      .from('review-media')
+      .list(folderPath);
+
+    if (listError) throw listError;
+
+    // 2. If there are photos, delete them from the bucket
+    if (files && files.length > 0) {
+      const filesToDelete = files.map((file) => `${folderPath}/${file.name}`);
+      const { error: deleteStorageError } = await supabase
+        .storage
+        .from('review-media')
+        .remove(filesToDelete);
+
+      if (deleteStorageError) throw deleteStorageError;
+      console.log("Deleted photos from storage");
+    }
+
+    // 3. Delete the review row from the database
+    const { error: dbError } = await supabase
+      .from('reviews')
+      .delete()
+      .eq('review_id', reviewId);
+
+    if (dbError) throw dbError;
+
+    // 4. Update UI: Remove the review from the local state
+    setReviews(prev => prev.filter(r => r.review_id !== reviewId));
+    
+    alert("Review and associated images deleted successfully.");
+  } catch (error) {
+    console.error("Deletion failed:", error.message);
+    alert("Error during deletion: " + error.message);
+  }
+};
   useEffect(() => {
     if (!establishment) return;
     let cancelled = false;
@@ -194,21 +393,7 @@ export function EstablishmentPage() {
     return () => {
       cancelled = true;
     };
-  }, [
-    establishment?.establishment_id,
-    location.key,
-    galleryRefreshNonce,
-    Object.values(reviewPhotosByReviewId).length,
-  ]);
-
-  useEffect(() => {
-    const onVis = () => {
-      if (document.visibilityState !== 'visible' || !establishment?.establishment_id) return;
-      setGalleryRefreshNonce((n) => n + 1);
-    };
-    document.addEventListener('visibilitychange', onVis);
-    return () => document.removeEventListener('visibilitychange', onVis);
-  }, [establishment?.establishment_id]);
+  }, [establishment?.establishment_id, Object.values(reviewPhotosByReviewId).length]);
 
   useEffect(() => {
     setGalleryOffset(0);
@@ -267,9 +452,11 @@ export function EstablishmentPage() {
   }, [reviewLightboxOpen]);
 
   useEffect(() => {
-  async function fetchEstablishment() {
+  async function fetchData() { // Renamed to fetchData to be more descriptive
     try {
       setLoading(true);
+
+      // 1. Fetch all active establishments
       const { data, error } = await supabase
         .from('establishments_with_ratings')
         .select('*')
@@ -277,29 +464,46 @@ export function EstablishmentPage() {
 
       if (error) throw error;
 
-      // This helper function must match the logic in your utils.js exactly
       const cleanSlug = (text) => 
         text
           .toLowerCase()
-        // replaces spaces with dashes
-        .replace(/\s+/g, '-')
-        // removes any character that is not a letter, number, or a dash
-        .replace(/[^a-z0-9\-]/g, '');
+          .replace(/\s+/g, '-')
+          .replace(/[^a-z0-9\-]/g, '');
 
+      // 2. Find the specific establishment matching the slug
       const match = data.find(
         (item) =>
           String(item.establishment_id) === String(slug) ||
           cleanSlug(item.name) === slug,
       );
 
-      setEstablishment(match);
+      if (match) {
+        setEstablishment(match);
+
+        // --- NEW LOGIC STARTS HERE ---
+        // 3. Fetch the hours for this specific establishment
+        const { data: hoursData, error: hoursError } = await supabase
+          .from('hours') // Replace with 'establishment_hours' if that's your table name
+          .select('*')
+          .eq('establishment_id', match.establishment_id)
+          .order('day_of_week', { ascending: true });
+
+        if (hoursError) throw hoursError;
+
+        setHours(hoursData || []); 
+        // --- NEW LOGIC ENDS HERE ---
+      }
+      
     } catch (error) {
       console.error('Error:', error.message);
     } finally {
       setLoading(false);
     }
   }
-  fetchEstablishment();
+
+  if (slug) {
+    fetchData();
+  }
 }, [slug]);
 
   useEffect(() => {
@@ -448,7 +652,7 @@ export function EstablishmentPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-[calc(100vh-3.5rem)] items-center justify-center">
+      <div className="flex h-screen items-center justify-center">
         <Loader2 className="w-10 h-10 animate-spin text-[#ffbf3e]" />
       </div>
     );
@@ -456,7 +660,7 @@ export function EstablishmentPage() {
 
   if (!establishment) {
     return (
-      <div className="flex min-h-[calc(100vh-3.5rem)] flex-col items-center justify-center space-y-4">
+      <div className="flex flex-col items-center justify-center h-screen space-y-4">
         <h2 className="text-2xl font-bold">Establishment not found</h2>
         <Link to="/restaurants" className="text-[#ffbf3e] hover:underline font-bold">
           Return to UMBC Establishments
@@ -464,7 +668,33 @@ export function EstablishmentPage() {
       </div>
     );
   }
+  const processedReviews = reviews
+  .filter(review => {
+    // Filter by Star Level
+    if (filterStar !== 'all' && review.rating !== parseInt(filterStar)) return false;
 
+    // Filter by Time Posted
+    if (filterTime !== 'all') {
+      const reviewDate = new Date(review.created_at);
+      const now = new Date();
+      const diffInDays = (now - reviewDate) / (1000 * 60 * 60 * 24);
+
+      if (filterTime === 'week' && diffInDays > 7) return false;
+      if (filterTime === 'month' && diffInDays > 30) return false;
+      if (filterTime === 'year' && diffInDays > 365) return false;
+    }
+    return true;
+  })
+  .sort((a, b) => {
+    // Sorting Logic
+    if (sortType === 'star-asc') return a.rating - b.rating;
+    if (sortType === 'star-desc') return b.rating - a.rating;
+    if (sortType === 'recency-asc') return new Date(a.created_at) - new Date(b.created_at);
+    if (sortType === 'recency-desc') return new Date(b.created_at) - new Date(a.created_at);
+    if (sortType === 'likes-asc') return (a.helpful_count || 0) - (b.helpful_count || 0);
+    if (sortType === 'likes-desc') return (b.helpful_count || 0) - (a.helpful_count || 0);
+    return 0;
+  });
   return (
     <div className={`min-h-screen ${dark ? 'text-white' : 'text-black'}`}>
       {/* Background Logic */}
@@ -510,7 +740,7 @@ export function EstablishmentPage() {
                   setPanelBroken={setPanelBroken}
                   dark={dark}
                   className="h-full min-h-[9rem]"
-                />
+                />heroesData?.publicUrl
               </div>
             </div>
           </div>
@@ -597,7 +827,7 @@ export function EstablishmentPage() {
           </div>
         </div>
       </div>
-
+          
       {/* Detailed Content */}
       <main className="container mx-auto px-6 py-12">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
@@ -630,22 +860,97 @@ export function EstablishmentPage() {
               </div>
 
               {/* Empty State Placeholder */}
-              {reviews.length === 0 && (
+              {/* Filters Container */}
+<div className="flex items-center justify-between w-full">  
+  {/* Star Filter */}
+  <div className="flex items-center gap-2">
+  <StarFilter 
+      value={filterStar} 
+      onChange={setFilterStar} 
+      dark={dark} 
+    />
+
+  {/* Time Filter */}
+  <CustomDropdown
+    value={filterTime}
+    onChange={setFilterTime}
+    dark={dark}
+    colorClass={dark ? 'text-white' : 'text-gray-700'}
+    options={[
+      { value: 'all', label: 'Anytime' },
+      { value: 'week', label: 'Past Week' },
+      { value: 'month', label: 'Past Month' },
+      { value: 'year', label: 'Past Year' },
+    ]}
+  />
+</div>
+  {/* Sort Order */}
+  <div className="flex items-center gap-2">
+    <span className="text-xs font-bold uppercase opacity-50">Sort By:</span>
+    <CustomDropdown
+      value={sortType}
+      onChange={setSortType}
+      dark={dark}
+      colorClass={dark ? 'text-[#ffbf3e]' : 'text-orange-600'}
+      options={[
+        { value: 'recency-desc', label: 'Newest First' },
+        { value: 'recency-asc', label: 'Oldest First' },
+        { value: 'star-desc', label: 'Highest Rated' },
+        { value: 'star-asc', label: 'Lowest Rated' },
+        { value: 'likes-desc', label: 'Most Helpful' },
+        { value: 'likes-asc', label: 'Least Helpful' },
+      ]}
+    />
+  </div>
+</div>
+              {processedReviews.length === 0 && (
                 <div className={`p-16 rounded-[2rem] border-2 border-dashed ${dark ? 'border-white/10 bg-white/5' : 'border-black/5 bg-gray-50'} text-center`}>
                 <p className="text-lg opacity-40">No reviews have been posted yet. Be the first to share your thoughts!</p>
                 </div>
               )}
+              
               {reviews.length > 0 && (
                 <div className="space-y-6">
-                  {reviews.map((review, reviewIdx) => (
-                    <div key={review.review_id} className={`p-6 rounded-xl ${dark ? 'bg-gray-900/40' : 'bg-gray-100'}`}>
+                  {processedReviews.map((review, reviewIdx) => (
+                    <div key={review.review_id} className={`p-6 rounded-xl ${dark ? 'bg-gray-900/40' : 'bg-gray-100'} relative`}>
+                      {/* Author Actions: Positioned in top right */}
+                      
+{isAuthenticated && user?.id === review.user_id && (
+  <div className="absolute top-6 right-6 flex gap-3">
+    {/* Edit Button - Now a button instead of a Link */}
+<button
+  onClick={() => {
+    setEditingReviewId(review.review_id);
+    setEditBuffer(review.body);
+    setEditRating(review.rating); // Pre-fill the textarea with current text
+  }}
+  className={`p-2 rounded-lg transition-colors ${
+    dark ? 'hover:bg-white/5 text-gray-500 hover:text-[#ffbf3e]' : 'hover:bg-black/5 text-gray-400 hover:text-[#ffbf3e]'
+  }`}
+>
+  <Pen className="w-5 h-5" />
+</button>
+
+    {/* Delete Button */}
+    <button
+      onClick={() => handleDeleteReview(review.review_id)}
+      className={`p-2 rounded-lg transition-colors ${dark ? 'hover:bg-white/5 text-gray-500 hover:text-red-500' : 'hover:bg-black/5 text-gray-400 hover:text-red-500'}`}
+      title="Delete Review"
+    >
+      <Trash2 className="w-5 h-5" />
+    </button>
+  </div>
+)}
                       {(() => {
                         const reviewUser = users.find((u) => u.user_id === review.user_id);
+                        const rating = review.rating;
                         const displayName = getDisplayName(reviewUser);
                         const avatarUrl = getAvatarUrl(reviewUser);
                         const affiliation = getAffiliation(reviewUser);
                         const avatarBroken = brokenAvatars[String(review.user_id)] === true;
+                        
                         return (
+                          
                       <div className="flex items-center gap-4 mb-4">
                         <div className="w-12 h-12 overflow-hidden rounded-full bg-[#ffbf3e] ring-1 ring-white/15 flex items-center justify-center text-white font-bold">
                           {avatarUrl && !avatarBroken ? (
@@ -662,9 +967,10 @@ export function EstablishmentPage() {
                               }
                             />
                           ) : (
-                            getInitials(displayName)
+                            getInitials(displayName) 
                           )}
                         </div>
+                        
                         <div>
                           <h4 className="font-bold leading-tight">{displayName}</h4>
                           {affiliation && (
@@ -672,21 +978,85 @@ export function EstablishmentPage() {
                               {affiliation}
                             </p>
                           )}
+                          <Stars rating={rating} dark={dark} />
                           <p className={`text-sm ${dark ? 'text-gray-400' : 'text-gray-500'}`}>
                             {formatRelativeReviewTime(review.updated_at)}
                           </p>
+                          
                         </div>
                       </div>
                         );
                       })()}
-                      <p className={`leading-relaxed ${dark ? 'text-gray-300' : 'text-gray-700'}`}>
-                        {review.body}
-                      </p>
+                     {editingReviewId === review.review_id ? (
+  <div className="space-y-4 mt-2">
+    {/* Star Selection Row */}
+    <div className="flex gap-1">
+      {[1, 2, 3, 4, 5].map((star) => (
+        <button
+          key={star}
+          type="button"
+          onClick={() => setEditRating(star)}
+          className="focus:outline-none transition-transform hover:scale-110"
+        >
+          <Star
+            className={`w-6 h-6 ${
+              star <= editRating 
+                ? 'fill-[#ffbf3e] text-[#ffbf3e]' 
+                : 'text-gray-400'
+            }`}
+          />
+        </button>
+      ))}
+      <span className="ml-2 text-sm font-bold opacity-70">
+        {editRating} / 5
+      </span>
+    </div>
+    <textarea
+      className={`w-full p-4 rounded-xl border-2 transition-all focus:outline-none focus:ring-2 focus:ring-[#ffbf3e] ${
+        dark 
+          ? 'bg-gray-800 border-white/10 text-white placeholder-gray-500' 
+          : 'bg-white border-black/10 text-gray-900'
+      }`}
+      rows="4"
+      value={editBuffer}
+      onChange={(e) => setEditBuffer(e.target.value)}
+      placeholder="Edit your review..."
+
+    />
+    
+    <div className="flex gap-3">
+      {/* THIS IS THE SAVE BUTTON */}
+      <button
+        type="button"
+        onClick={() => handleUpdateReview(review.review_id)}
+        className="inline-flex items-center justify-center rounded-xl bg-[#ffbf3e] px-5 py-2.5 text-sm font-bold text-black transition-all hover:scale-105 active:scale-95 shadow-lg shadow-[#ffbf3e]/20"
+      >
+        Save Changes
+      </button>
+
+      {/* CANCEL BUTTON */}
+      <button
+        type="button"
+        onClick={() => setEditingReviewId(null)}
+        className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-all hover:bg-opacity-80 ${
+          dark ? 'bg-white/10 text-white' : 'bg-gray-200 text-gray-700'
+        }`}
+      >
+        Cancel
+      </button>
+    </div>
+  </div>
+) : (
+  /* This is your normal review text display */
+  <p className={`leading-relaxed ${dark ? 'text-gray-300' : 'text-gray-700'}`}>
+    {review.body}
+  </p>
+)}
                       {(() => {
                         const photos = reviewPhotosByReviewId[String(review.review_id)] ?? [];
                         if (photos.length === 0) return null;
                         return (
-                          <div className="mt-4 grid grid-cols-2 gap-2 sm:max-w-md sm:grid-cols-3">
+                          <div className="mt-4 grid grid-cols-3 gap-2 sm:max-w-md">
                             {photos.map((p, photoIdx) => (
                               <button
                                 key={p.key}
@@ -767,37 +1137,42 @@ export function EstablishmentPage() {
                     <p>
                       <span className="text-sm text-gray-500 flex items-center gap-1 mt-2">
                         {review.helpful_count} like{review.helpful_count == 1 ? '' : 's'}
+                        {/* --- PASTE THIS BLOCK HERE --- */}
+
                       </span>
                     </p>
                     </div>
                   ))}
                 </div>
               )}
-              
+            
             </section>
           </div>
-
+          
           {/* Right Column: Sidebar Stats */}
           <div className="space-y-6">
             <div className={`p-8 rounded-[2rem] border ${dark ? 'bg-gray-900/40 border-white/10' : 'bg-gray-50 border-black/5 shadow-sm'}`}>
-              <h4 className="font-bold text-xl mb-6 flex items-center gap-3">
-                <Clock className="w-6 h-6 text-[#ffbf3e]" /> Operating Hours
+              <h4 className="font-bold font-serif text-2xl mb-6 flex items-center gap-3 ">
+                <Clock font-serif className={"w-6 h-6 text-[#ffbf3e]"} /> Operating Hours
               </h4>
-              <div className={`text-lg leading-relaxed ${dark ? 'text-gray-300' : 'text-gray-700'}`}>
-                {establishment.hours || "Hours not listed"}
-              </div>
+              <div style={{ fontSize: '1.8rem' }}>
+                  {hours.length > 0 ? (
+                    <ul>
+                      {hours.map((row) => (
+                        <li key={row.hours_id} className={`text-xl font-serif leading-relaxed ${dark ? 'text-gray-100' : 'text-gray-600'}`}  >
+                          
+                          <strong>{row.day_of_week}: </strong> {row.is_open ? `${formatTo12Hour(row.open_time)} - ${formatTo12Hour(row.close_time)}` : 
+                          <span style={{ color: '#FA6666', fontWeight: 'bold' }}>CLOSED</span>}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p>No hours listed for this location.</p>
+                  )}
+                </div>
             </div>
 
-            <div className={`p-8 rounded-[2rem] border ${dark ? 'bg-gray-900/40 border-white/10' : 'bg-gray-50 border-black/5 shadow-sm'}`}>
-              <h4 className="font-bold text-xl mb-4 flex items-center gap-3">
-                <Utensils className="w-6 h-6 text-[#ffbf3e]" /> Highlights
-              </h4>
-              <ul className={`space-y-3 ${dark ? 'text-gray-400' : 'text-gray-500'}`}>
-                <li className="flex items-center gap-2">• Student-Friendly</li>
-                <li className="flex items-center gap-2">• UMBC Meal Plan Accepted</li>
-                <li className="flex items-center gap-2">• Casual Dining</li>
-              </ul>
-            </div>
+            
           </div>
 
         </div>

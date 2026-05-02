@@ -28,3 +28,13 @@ export function formatRelativeReviewTime(iso) {
   if (day < 30) return day === 1 ? '1 day ago' : `${day} days ago`;
   return then.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 }
+
+export function formatTo12Hour(timeStr) {
+  if (!timeStr) return '';
+  // Split the "HH:mm:ss" string
+  const [hours, minutes] = timeStr.split(':');
+  let h = parseInt(hours, 10);
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  h = h % 12 || 12; // Convert 0 to 12 for midnight
+  return `${h}:${minutes} ${ampm}`;
+}
