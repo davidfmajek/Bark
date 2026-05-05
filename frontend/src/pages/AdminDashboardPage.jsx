@@ -124,14 +124,37 @@ export function AdminDashboardPage() {
   }, []);
 
   const loadActivity = useCallback(async () => {
-    const [reviews, reports] = await Promise.all([
+    const [reviews, reports, newUsers, establishments, editedReviews, reviewImages] = await Promise.all([
       supabase.from('reviews').select('review_id, created_at, rating, user:user_id(display_name, email), establishment:establishment_id(name)').order('created_at', { ascending: false }).limit(10),
       supabase.from('reports').select('report_id, reported_at, reason, status').order('reported_at', { ascending: false }).limit(10),
+      supabase.from('users').select('user_id, created_at, display_name, email').order('created_at', { ascending: false }).limit(10),
+      supabase.from('establishments').select('establishment_id, created_at, name').order('created_at', { ascending: false }).limit(10),
+      supabase.from('reviews').select('review_id, created_at, updated_at, user:user_id(display_name, email), establishment:establishment_id(name)').order('updated_at', { ascending: false }).limit(10),
+      supabase.from('review_images').select('image_id, uploaded_at, review:review_id(review_id, user:user_id(display_name, email), establishment:establishment_id(name))').order('uploaded_at', { ascending: false }).limit(10),
     ]);
     const merged = [
       ...adminEvents.map((e, idx) => ({ id: `admin-${idx}-${e.ts}`, ts: e.ts, label: e.label })),
       ...(reviews.data ?? []).map((r) => ({ id: `review-${r.review_id}`, ts: r.created_at, label: `${r.user?.display_name || r.user?.email || 'Anonymous user'} rated ${r.establishment?.name || 'Unknown establishment'} ${r.rating ?? '—'}★` })),
-      ...(reports.data ?? []).map((r) => ({ id: `report-${r.report_id}`, ts: r.reported_at, label: `Report submitted: ${r.reason || 'No reason'} (${r.status})` })),
+      ...(reports.data ?? []).map((r) => {
+        if (r.status === 'Pending') {
+          return { id: `report-${r.report_id}`, ts: r.reported_at, label: `Report submitted: ${r.reason || 'No reason'} (Pending)` };
+        }
+        return { id: `report-outcome-${r.report_id}`, ts: r.reported_at, label: `Report #${r.report_id} marked ${r.status}` };
+      }),
+      ...(newUsers.data ?? []).map((u) => ({ id: `signup-${u.user_id}`, ts: u.created_at, label: `${u.display_name || u.email || 'A new user'} created an account` })),
+      ...(establishments.data ?? []).map((e) => ({ id: `establishment-${e.establishment_id}`, ts: e.created_at, label: `New establishment added: ${e.name || 'Untitled establishment'}` })),
+      ...(editedReviews.data ?? [])
+        .filter((r) => r.updated_at && r.created_at && new Date(r.updated_at).getTime() > new Date(r.created_at).getTime() + 1000)
+        .map((r) => ({
+          id: `review-edit-${r.review_id}-${r.updated_at}`,
+          ts: r.updated_at,
+          label: `${r.user?.display_name || r.user?.email || 'A user'} edited a review for ${r.establishment?.name || 'Unknown establishment'}`,
+        })),
+      ...(reviewImages.data ?? []).map((img) => ({
+        id: `review-image-${img.image_id}`,
+        ts: img.uploaded_at,
+        label: `${img.review?.user?.display_name || img.review?.user?.email || 'A user'} added a review photo for ${img.review?.establishment?.name || 'Unknown establishment'}`,
+      })),
     ].sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime()).slice(0, 20);
     setActivity(merged);
   }, [adminEvents]);
