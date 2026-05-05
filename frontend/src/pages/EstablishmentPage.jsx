@@ -1155,11 +1155,11 @@ const handleDeleteReview = async (reviewId) => {
               <h4 className="font-bold font-serif text-2xl mb-6 flex items-center gap-3 ">
                 <Clock font-serif className={"w-6 h-6 text-[#ffbf3e]"} /> Operating Hours
               </h4>
-              <div style={{ fontSize: '1.8rem' }}>
+              <div>
                   {hours.length > 0 ? (
                     <ul>
                       {hours.map((row) => (
-                        <li key={row.hours_id} className={`text-xl font-serif leading-relaxed ${dark ? 'text-gray-100' : 'text-gray-600'}`}  >
+                        <li key={row.hours_id} className={`text-base leading-relaxed ${dark ? 'text-gray-100' : 'text-gray-600'}`}  >
                           
                           <strong>{row.day_of_week}: </strong> {row.is_open ? `${formatTo12Hour(row.open_time)} - ${formatTo12Hour(row.close_time)}` : 
                           <span style={{ color: '#FA6666', fontWeight: 'bold' }}>CLOSED</span>}
