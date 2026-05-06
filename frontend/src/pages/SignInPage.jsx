@@ -15,6 +15,27 @@ function hasCompletedProfile(user) {
   return Boolean((displayName || '').trim() && (affiliation || '').trim());
 }
 
+function getGoogleProfileSeed(user) {
+  const displayName =
+    (user?.user_metadata?.display_name || user?.user_metadata?.full_name || user?.user_metadata?.name || '')
+      .trim();
+  const affiliation = (user?.user_metadata?.affiliation || '').trim();
+  return { displayName, affiliation };
+}
+
+function isGoogleAuthUser(user) {
+  const provider = String(user?.app_metadata?.provider ?? '').toLowerCase();
+  const providers = Array.isArray(user?.app_metadata?.providers)
+    ? user.app_metadata.providers.map((p) => String(p).toLowerCase())
+    : [];
+  const identities = Array.isArray(user?.identities) ? user.identities : [];
+  return (
+    provider === 'google' ||
+    providers.includes('google') ||
+    identities.some((i) => String(i?.provider ?? '').toLowerCase() === 'google')
+  );
+}
+
 /** Set before OAuth from signup step 1; cleared after profile step or sign-out */
 const SIGNUP_GOOGLE_PENDING = 'bark_signup_google_pending';
 /** Set before OAuth from Sign In + Google so URL sync does not reset mode before we resolve profile */
@@ -23,7 +44,7 @@ const LOGIN_GOOGLE_OAUTH_PENDING = 'bark_login_google_oauth_pending';
 export function SignInPage() {
   const { user, isAuthenticated, loading, signIn, signUp, signInWithGoogle, signOut } = useAuth();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const initialMode = searchParams.get('mode') === 'signup' ? 'signup' : 'login';
   const [mode, setMode] = useState(initialMode);
   const [email, setEmail] = useState('');
@@ -42,13 +63,56 @@ export function SignInPage() {
   const [needsGoogleProfileCompletion, setNeedsGoogleProfileCompletion] = useState(false);
 
   useEffect(() => {
+    const hashParams = new URLSearchParams(window.location.hash.startsWith('#') ? window.location.hash.slice(1) : '');
+    const googleIdToken = hashParams.get('google_id_token') || searchParams.get('google_id_token');
+    const oauthError = searchParams.get('oauth_error');
+    if (!googleIdToken && !oauthError) return;
+
+    let cancelled = false;
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete('google_id_token');
+    nextParams.delete('oauth_error');
+    setSearchParams(nextParams, { replace: true });
+    if (hashParams.has('google_id_token')) {
+      window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+    }
+
+    const resolveOAuthReturn = async () => {
+      if (oauthError) {
+        if (!cancelled) {
+          setError('Google sign-in failed. Please try again.');
+          setOauthBusy(false);
+        }
+        return;
+      }
+      if (!googleIdToken) return;
+      if (!cancelled) {
+        setOauthBusy(true);
+        setError('');
+      }
+      const { error: idTokenError } = await supabase.auth.signInWithIdToken({
+        provider: 'google',
+        token: googleIdToken,
+      });
+      if (idTokenError && !cancelled) {
+        setError(idTokenError.message || 'Google sign-in failed.');
+        setOauthBusy(false);
+      }
+    };
+
+    resolveOAuthReturn();
+    return () => {
+      cancelled = true;
+    };
+  }, [searchParams, setSearchParams]);
+
+  useEffect(() => {
     if (loading || !isAuthenticated || !user) return;
 
     let cancelled = false;
 
     const resolve = async () => {
-      const signedInWithGoogle = user.identities?.some((i) => i.provider === 'google');
-      const loginGooglePending = sessionStorage.getItem(LOGIN_GOOGLE_OAUTH_PENDING) === '1';
+      const signedInWithGoogle = isGoogleAuthUser(user);
 
       if (signedInWithGoogle && !isUmbcEmail(user.email)) {
         sessionStorage.removeItem(SIGNUP_GOOGLE_PENDING);
@@ -60,35 +124,49 @@ export function SignInPage() {
       }
 
       if (signedInWithGoogle && sessionStorage.getItem(SIGNUP_GOOGLE_PENDING) === '1') {
+        const seed = getGoogleProfileSeed(user);
         sessionStorage.removeItem(LOGIN_GOOGLE_OAUTH_PENDING);
         if (!cancelled) {
           setMode('signup');
           setSignupStep(2);
           setEmail(user.email ?? '');
+          setDisplayName(seed.displayName);
+          setAffiliation(seed.affiliation);
           setNeedsGoogleProfileCompletion(true);
         }
         return;
       }
 
-      if (signedInWithGoogle) {
-        const { data: profile, error: profileError } = await supabase
-          .from('users')
-          .select('user_id')
-          .eq('user_id', user.id)
-          .maybeSingle();
-        if (cancelled) return;
-        if (profileError) {
-          setError(profileError.message || 'Unable to verify your account profile right now.');
-          return;
-        }
-        sessionStorage.removeItem(LOGIN_GOOGLE_OAUTH_PENDING);
-        if (!profile && !hasCompletedProfile(user) && !loginGooglePending) {
-          setMode('signup');
-          setSignupStep(2);
-          setEmail(user.email ?? '');
-          setNeedsGoogleProfileCompletion(true);
-          return;
-        }
+      // Safety net: ensure a public.users profile row exists and is complete.
+      // This fixes Google OAuth signups that skip affiliation metadata (and therefore skip the DB sync trigger).
+      const { data: profile, error: profileError } = await supabase
+        .from('users')
+        .select('user_id, display_name, affiliation')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (cancelled) return;
+      if (profileError) {
+        setError(profileError.message || 'Unable to verify your account profile right now.');
+        return;
+      }
+
+      sessionStorage.removeItem(LOGIN_GOOGLE_OAUTH_PENDING);
+      const seed = getGoogleProfileSeed(user);
+      const dbHasProfile =
+        !!profile &&
+        Boolean(String(profile.display_name ?? '').trim()) &&
+        Boolean(String(profile.affiliation ?? '').trim());
+      const authHasProfile = hasCompletedProfile(user);
+
+      if (!dbHasProfile || !authHasProfile) {
+        setMode('signup');
+        setSignupStep(2);
+        setEmail(user.email ?? '');
+        setDisplayName(seed.displayName);
+        setAffiliation(seed.affiliation);
+        // Only hide password field when the user is signed in via Google OAuth
+        setNeedsGoogleProfileCompletion(signedInWithGoogle);
+        return;
       }
 
       if (!cancelled) navigate('/', { replace: true });
@@ -236,9 +314,16 @@ export function SignInPage() {
       sessionStorage.removeItem(SIGNUP_GOOGLE_PENDING);
       sessionStorage.removeItem(LOGIN_GOOGLE_OAUTH_PENDING);
     }
+    
+    if (mode === 'signup') {
+      setSignupStep(1);
+    }
     setOauthBusy(true);
     try {
-      await signInWithGoogle();
+      const redirectTo = mode === 'signup'
+        ? `${window.location.origin}/signin?mode=signup`
+        : `${window.location.origin}/signin`;
+      await signInWithGoogle(redirectTo);
     } catch (err) {
       sessionStorage.removeItem(SIGNUP_GOOGLE_PENDING);
       sessionStorage.removeItem(LOGIN_GOOGLE_OAUTH_PENDING);

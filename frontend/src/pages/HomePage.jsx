@@ -108,6 +108,8 @@ export function HomePage() {
 
           return {
             id: latestReview.review_id || latestReview.id, 
+            reviewId: latestReview.review_id || latestReview.id,
+            establishmentId: spot.id,
             name: reviewerName,
             initials: reviewerName.split(/[ _]/).map(n => n[0]).join('').toUpperCase().substring(0, 2),
             establishmentName: spot.name,
@@ -275,7 +277,11 @@ export function HomePage() {
           <h2 className="font-display text-2xl font-extrabold sm:text-3xl">Latest from Top Spots</h2>
           <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {featuredReviews.map((t) => (
-              <article key={t.id} className={`rounded-2xl border p-5 ${dark ? 'border-white/10 bg-[#161b26]' : 'border-black/10 bg-white'}`}>
+              <Link
+                key={t.id}
+                to={`/restaurants/${t.establishmentId}?review=${encodeURIComponent(t.reviewId)}`}
+                className={`block rounded-2xl border p-5 transition hover:-translate-y-0.5 ${dark ? 'border-white/10 bg-[#161b26] hover:bg-[#1c2230]' : 'border-black/10 bg-white hover:bg-gray-50'}`}
+              >
                 <div className="flex items-center gap-3">
                   <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full font-display text-xs font-bold ${dark ? 'bg-white/10' : 'bg-black/5'}`}>
                     {t.initials}
@@ -288,10 +294,10 @@ export function HomePage() {
                   </div>
                 </div>
                 <div className="mt-3"><Stars rating={t.rating} dark={dark} /></div>
-                <p className={`mt-3 text-sm italic leading-relaxed ${dark ? 'text-white/75' : 'text-black/70'}`}>
+                <p className={`mt-3 line-clamp-4 break-words text-sm italic leading-relaxed ${dark ? 'text-white/75' : 'text-black/70'}`}>
                   “{t.content.length > 120 ? `${t.content.substring(0, 120)}...` : t.content}”
                 </p>
-              </article>
+              </Link>
             ))}
           </div>
         </section>

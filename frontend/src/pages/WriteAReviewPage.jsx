@@ -8,6 +8,15 @@ import { resolveRestaurantCardImageUrl, REVIEW_STORAGE_BUCKET } from '../lib/res
 const MIN_REVIEW_CHARS = 50;
 const MAX_REVIEW_IMAGES = 3;
 const MAX_REVIEW_IMAGE_BYTES = 5 * 1024 * 1024;
+
+function reviewLengthErrorMessage(errMessage) {
+  const msg = String(errMessage || '');
+  if (/at least 50 characters|review body must be at least 50 characters/i.test(msg)) {
+    return `Please write at least ${MIN_REVIEW_CHARS} characters.`;
+  }
+  return msg || 'Unable to submit review right now.';
+}
+
 /** Matches `review_images.mime_type` CHECK in schema / migration. */
 const REVIEW_IMAGE_MIME_TO_EXT = {
   'image/jpeg': 'jpg',
@@ -745,7 +754,7 @@ export function WriteAReviewPage() {
 
     if (error || !reviewRow?.review_id) {
       console.error('Error adding review to database:', error);
-      setErrorMessage(error?.message || 'Unable to submit review right now.');
+      setErrorMessage(reviewLengthErrorMessage(error?.message));
       setSaving(false);
       return;
     }
@@ -794,7 +803,7 @@ export function WriteAReviewPage() {
     setSuccessMessage(`Review submitted for ${selectedEstablishment?.name ?? 'this place'}.`);
     setSaving(false);
     setReviewPhotos([]);
-    navigate('/my-reviews');
+    navigate(`/restaurants/${selectedEstablishment?.establishment_id ?? selectedEstablishmentId}`);
   }
 
   const showNotFound = !isFinderStep && !loading && !selectedEstablishment;

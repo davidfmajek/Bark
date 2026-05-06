@@ -121,6 +121,26 @@ CREATE TABLE IF NOT EXISTS reports (
   reported_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Enforce minimum review length (trimmed) at DB level.
+CREATE OR REPLACE FUNCTION public.enforce_review_min_body_chars()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF char_length(btrim(COALESCE(NEW.body, ''))) < 50 THEN
+    RAISE EXCEPTION 'Review body must be at least 50 characters.';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_reviews_min_body_chars ON public.reviews;
+
+CREATE TRIGGER trg_reviews_min_body_chars
+  BEFORE INSERT OR UPDATE OF body ON public.reviews
+  FOR EACH ROW
+  EXECUTE FUNCTION public.enforce_review_min_body_chars();
+
 -- Indexes for common lookups
 -- CREATE INDEX idx_reviews_establishment ON reviews (establishment_id);
 -- CREATE INDEX idx_reviews_user ON reviews (user_id);

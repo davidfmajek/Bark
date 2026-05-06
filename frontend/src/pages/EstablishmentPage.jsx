@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase.js';
 import {
   Clock,
@@ -21,6 +21,16 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from "../contexts/AuthContext";
 import { fetchEstablishmentGalleryUrls, resolveReviewImageForDisplay } from '../lib/restaurantImages.js';
 import { formatRelativeReviewTime, formatTo12Hour } from '../lib/utils.js';
+import { ConfirmModal } from './admin/components/Common';
+
+const MIN_REVIEW_CHARS = 50;
+const REVIEW_EDIT_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+function canEditReview(review) {
+  const createdAt = new Date(review?.created_at ?? '').getTime();
+  if (!Number.isFinite(createdAt)) return false;
+  return Date.now() - createdAt <= REVIEW_EDIT_WINDOW_MS;
+}
 
 
 
@@ -271,6 +281,7 @@ function getAffiliation(user) {
 export function EstablishmentPage() {
   const { slug } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { theme } = useTheme();
   const { user, isAuthenticated } = useAuth();
   const dark = theme === 'dark';
@@ -279,7 +290,7 @@ export function EstablishmentPage() {
   const [establishment, setEstablishment] = useState(null);
   const [users, setUsers] = useState([]);
   const [reviews, setReviews] = useState([]);
-  const [likeButton, setLikeButton] = useState([]);
+  const [likedByReviewId, setLikedByReviewId] = useState({});
   const [loading, setLoading] = useState(true);
   const [galleryOffset, setGalleryOffset] = useState(0);
   const [panelBroken, setPanelBroken] = useState([false, false, false]);
@@ -288,48 +299,71 @@ export function EstablishmentPage() {
   const [galleryLoading, setGalleryLoading] = useState(true);
   const [hours, setHours] = useState([]);
   const [filterStar, setFilterStar] = useState('all');
-const [filterTime, setFilterTime] = useState('all');
-const [sortType, setSortType] = useState('recency-desc'); // Default: Newest first
+  const [filterTime, setFilterTime] = useState('all');
+  const [sortType, setSortType] = useState('recency-desc'); // Default: Newest first
   /** @type {Record<string, { src: string; key: string }[]>} */
   const [reviewPhotosByReviewId, setReviewPhotosByReviewId] = useState({});
   /** @type {{ review: object; photos: { src: string; key: string }[]; index: number } | null} */
   const [reviewPhotoLightbox, setReviewPhotoLightbox] = useState(null);
   const [brokenAvatars, setBrokenAvatars] = useState({});
   const [editRating, setEditRating] = useState(0);
+  const [editError, setEditError] = useState('');
+  const [deleteReviewId, setDeleteReviewId] = useState(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteErrorMessage, setDeleteErrorMessage] = useState('');
+  const [highlightedReviewId, setHighlightedReviewId] = useState(null);
   const { panels, photoCount, galleryMaxOffset } = useMemo(
     () => buildCollagePanels(galleryUrls, galleryOffset),
     [galleryUrls, galleryOffset, reviewPhotosByReviewId],
   );
   const handleUpdateReview = async (reviewId) => {
-  if (!editBuffer.trim()) return;
+    const review = reviews.find((item) => item.review_id === reviewId);
+    if (!review || !canEditReview(review)) {
+      setEditError('Reviews can only be edited within 24 hours of posting.');
+      return;
+    }
+    const trimmedBody = editBuffer.trim();
+    if (trimmedBody.length < MIN_REVIEW_CHARS) {
+      setEditError(`Please write at least ${MIN_REVIEW_CHARS} characters.`);
+      return;
+    }
 
-  try {
-    const { error } = await supabase
-      .from('reviews')
-      .update({ 
-        body: editBuffer, 
-        rating: editRating, // Send the new star count
-        updated_at: new Date().toISOString() 
-      })
-      .eq('review_id', reviewId);
+    try {
+      const { error } = await supabase
+        .from('reviews')
+        .update({
+          body: trimmedBody,
+          rating: editRating,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('review_id', reviewId);
 
-    if (error) throw error;
+      if (error) throw error;
 
-    // Update the local state so the UI updates the stars and text immediately
-    setReviews(prev => prev.map(r => 
-      r.review_id === reviewId ? { ...r, body: editBuffer, rating: editRating } : r
-    ));
+      setReviews((prev) =>
+        prev.map((r) =>
+          r.review_id === reviewId
+            ? { ...r, body: trimmedBody, rating: editRating }
+            : r,
+        ),
+      );
 
-    setEditingReviewId(null);
-  } catch (error) {
-    console.error("Error:", error.message);
-  }
-};
-const handleDeleteReview = async (reviewId) => {
-  const confirmed = window.confirm("Are you sure? This will permanently delete the review and all photos.");
-  if (!confirmed) return;
+      setEditError('');
+      setEditingReviewId(null);
+    } catch (error) {
+      console.error('Error:', error.message);
+      if (/at least 50 characters|review body must be at least 50 characters/i.test(String(error?.message || ''))) {
+        setEditError(`Please write at least ${MIN_REVIEW_CHARS} characters.`);
+      } else {
+        setEditError(error?.message || 'Unable to save review right now.');
+      }
+    }
+  };
+  const doDeleteReview = async (reviewId) => {
+    setDeleteLoading(true);
+    setDeleteErrorMessage('');
 
-  try {
+    try {
     // 1. List all files in the specific folder for this review
     const folderPath = `review-images/${reviewId}`;
     const { data: files, error: listError } = await supabase
@@ -361,11 +395,12 @@ const handleDeleteReview = async (reviewId) => {
 
     // 4. Update UI: Remove the review from the local state
     setReviews(prev => prev.filter(r => r.review_id !== reviewId));
-    
-    alert("Review and associated images deleted successfully.");
+    setDeleteReviewId(null);
   } catch (error) {
     console.error("Deletion failed:", error.message);
-    alert("Error during deletion: " + error.message);
+    setDeleteErrorMessage(error?.message ? `Error during deletion: ${error.message}` : 'Error during deletion.');
+  } finally {
+    setDeleteLoading(false);
   }
 };
   useEffect(() => {
@@ -559,6 +594,19 @@ const handleDeleteReview = async (reviewId) => {
   }, [establishment?.establishment_id, reviews.length]);
 
   useEffect(() => {
+    if (loading || reviews.length === 0) return;
+    const params = new URLSearchParams(location.search);
+    const reviewId = params.get('review');
+    if (!reviewId) return;
+    const target = document.getElementById(`review-${reviewId}`);
+    if (!target) return;
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setHighlightedReviewId(reviewId);
+    const timer = window.setTimeout(() => setHighlightedReviewId(null), 2200);
+    return () => window.clearTimeout(timer);
+  }, [location.search, loading, reviews.length]);
+
+  useEffect(() => {
     if (reviews.length === 0) {
       setReviewPhotosByReviewId({});
       return;
@@ -614,19 +662,18 @@ const handleDeleteReview = async (reviewId) => {
             //.eq("user_id", user.id);
           if (error) {
             console.error("Error fetching helpful votes: ", error.message);
-            setLikeButton(new Array(reviews.length).fill(false));
+            setLikedByReviewId({});
             return;
           }
-          const likeToggles = new Array(reviews.length).fill(false);
-          likeToggles.forEach((_, idx) => {
-            const reviewID = reviews[idx].review_id;
-            likeToggles[idx] = data.some((like) => { 
-	          return like.review_id == reviewID && like.user_id == user.id;
-	        })
-	      return likeToggles[idx];
-        });
+          const nextLikedByReviewId = {};
+          for (const r of reviews) {
+            const reviewId = r.review_id;
+            nextLikedByReviewId[reviewId] = (data ?? []).some(
+              (like) => like.review_id === reviewId && like.user_id === user.id,
+            );
+          }
 
-          setLikeButton(likeToggles);
+          setLikedByReviewId(nextLikedByReviewId);
         }
         catch (error) {
           console.error("Error fetching helpful votes: ", error.message);
@@ -912,35 +959,54 @@ const handleDeleteReview = async (reviewId) => {
               {reviews.length > 0 && (
                 <div className="space-y-6">
                   {processedReviews.map((review, reviewIdx) => (
-                    <div key={review.review_id} className={`p-6 rounded-xl ${dark ? 'bg-gray-900/40' : 'bg-gray-100'} relative`}>
+                    <div
+                      id={`review-${review.review_id}`}
+                      key={review.review_id}
+                      className={`relative rounded-xl p-6 transition-all ${
+                        highlightedReviewId === String(review.review_id)
+                          ? dark
+                            ? 'ring-2 ring-[#f5bf3e] bg-[#1c2233] shadow-[0_0_0_4px_rgba(245,191,62,0.22)]'
+                            : 'ring-2 ring-[#D4A017] bg-[#fff8e6] shadow-[0_0_0_4px_rgba(212,160,23,0.2)]'
+                          : dark
+                            ? 'bg-gray-900/40'
+                            : 'bg-gray-100'
+                      }`}
+                    >
+                      {(() => {
+                        const withinEditWindow = canEditReview(review);
+                        return (
+                          <>
                       {/* Author Actions: Positioned in top right */}
-                      
-{isAuthenticated && user?.id === review.user_id && (
-  <div className="absolute top-6 right-6 flex gap-3">
-    {/* Edit Button - Now a button instead of a Link */}
-<button
-  onClick={() => {
-    setEditingReviewId(review.review_id);
-    setEditBuffer(review.body);
-    setEditRating(review.rating); // Pre-fill the textarea with current text
-  }}
-  className={`p-2 rounded-lg transition-colors ${
-    dark ? 'hover:bg-white/5 text-gray-500 hover:text-[#ffbf3e]' : 'hover:bg-black/5 text-gray-400 hover:text-[#ffbf3e]'
-  }`}
->
-  <Pen className="w-5 h-5" />
-</button>
+                      {isAuthenticated && user?.id === review.user_id && (
+                        <div className="absolute right-6 top-6 flex gap-3">
+                          {withinEditWindow ? (
+                            <button
+                              onClick={() => {
+                                setEditingReviewId(review.review_id);
+                                setEditBuffer(review.body);
+                                setEditRating(review.rating);
+                                setEditError('');
+                              }}
+                              className={`rounded-lg p-2 transition-colors ${
+                                dark ? 'text-gray-500 hover:bg-white/5 hover:text-[#ffbf3e]' : 'text-gray-400 hover:bg-black/5 hover:text-[#ffbf3e]'
+                              }`}
+                            >
+                              <Pen className="h-5 w-5" />
+                            </button>
+                          ) : null}
 
-    {/* Delete Button */}
-    <button
-      onClick={() => handleDeleteReview(review.review_id)}
-      className={`p-2 rounded-lg transition-colors ${dark ? 'hover:bg-white/5 text-gray-500 hover:text-red-500' : 'hover:bg-black/5 text-gray-400 hover:text-red-500'}`}
-      title="Delete Review"
-    >
-      <Trash2 className="w-5 h-5" />
-    </button>
-  </div>
-)}
+                          <button
+                            onClick={() => {
+                              setDeleteErrorMessage('');
+                              setDeleteReviewId(review.review_id);
+                            }}
+                            className={`rounded-lg p-2 transition-colors ${dark ? 'text-gray-500 hover:bg-white/5 hover:text-red-500' : 'text-gray-400 hover:bg-black/5 hover:text-red-500'}`}
+                            title="Delete Review"
+                          >
+                            <Trash2 className="h-5 w-5" />
+                          </button>
+                        </div>
+                      )}
                       {(() => {
                         const reviewUser = users.find((u) => u.user_id === review.user_id);
                         const rating = review.rating;
@@ -987,71 +1053,82 @@ const handleDeleteReview = async (reviewId) => {
                       </div>
                         );
                       })()}
-                     {editingReviewId === review.review_id ? (
-  <div className="space-y-4 mt-2">
-    {/* Star Selection Row */}
-    <div className="flex gap-1">
-      {[1, 2, 3, 4, 5].map((star) => (
-        <button
-          key={star}
-          type="button"
-          onClick={() => setEditRating(star)}
-          className="focus:outline-none transition-transform hover:scale-110"
-        >
-          <Star
-            className={`w-6 h-6 ${
-              star <= editRating 
-                ? 'fill-[#ffbf3e] text-[#ffbf3e]' 
-                : 'text-gray-400'
-            }`}
-          />
-        </button>
-      ))}
-      <span className="ml-2 text-sm font-bold opacity-70">
-        {editRating} / 5
-      </span>
-    </div>
-    <textarea
-      className={`w-full p-4 rounded-xl border-2 transition-all focus:outline-none focus:ring-2 focus:ring-[#ffbf3e] ${
-        dark 
-          ? 'bg-gray-800 border-white/10 text-white placeholder-gray-500' 
-          : 'bg-white border-black/10 text-gray-900'
-      }`}
-      rows="4"
-      value={editBuffer}
-      onChange={(e) => setEditBuffer(e.target.value)}
-      placeholder="Edit your review..."
+                      {editingReviewId === review.review_id ? (
+                        <div className="mt-2 space-y-4">
+                          <div className="flex gap-1">
+                            {[1, 2, 3, 4, 5].map((star) => (
+                              <button
+                                key={star}
+                                type="button"
+                                onClick={() => setEditRating(star)}
+                                className="transition-transform hover:scale-110 focus:outline-none"
+                              >
+                                <Star
+                                  className={`h-6 w-6 ${star <= editRating ? 'fill-[#ffbf3e] text-[#ffbf3e]' : 'text-gray-400'}`}
+                                />
+                              </button>
+                            ))}
+                            <span className="ml-2 text-sm font-bold opacity-70">
+                              {editRating} / 5
+                            </span>
+                          </div>
+                          <textarea
+                            className={`w-full rounded-xl border-2 p-4 transition-all focus:outline-none focus:ring-2 focus:ring-[#ffbf3e] ${
+                              dark
+                                ? 'border-white/10 bg-gray-800 text-white placeholder-gray-500'
+                                : 'border-black/10 bg-white text-gray-900'
+                            }`}
+                            rows="4"
+                            value={editBuffer}
+                            onChange={(e) => {
+                              setEditBuffer(e.target.value);
+                              if (editError) setEditError('');
+                            }}
+                            placeholder="Edit your review..."
+                          />
+                          <p className={`text-sm ${editBuffer.trim().length >= MIN_REVIEW_CHARS ? (dark ? 'text-emerald-400/90' : 'text-emerald-700') : 'text-red-500'}`}>
+                            Reviews need to be at least {MIN_REVIEW_CHARS} characters ({editBuffer.trim().length}/{MIN_REVIEW_CHARS}).
+                          </p>
+                          {editError ? <p className="text-sm font-semibold text-red-500">{editError}</p> : null}
 
-    />
-    
-    <div className="flex gap-3">
-      {/* THIS IS THE SAVE BUTTON */}
-      <button
-        type="button"
-        onClick={() => handleUpdateReview(review.review_id)}
-        className="inline-flex items-center justify-center rounded-xl bg-[#ffbf3e] px-5 py-2.5 text-sm font-bold text-black transition-all hover:scale-105 active:scale-95 shadow-lg shadow-[#ffbf3e]/20"
-      >
-        Save Changes
-      </button>
+                          <div className="flex gap-3">
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateReview(review.review_id)}
+                              className="inline-flex items-center justify-center rounded-xl bg-[#ffbf3e] px-5 py-2.5 text-sm font-bold text-black shadow-lg shadow-[#ffbf3e]/20 transition-all hover:scale-105 active:scale-95"
+                            >
+                              Save Changes
+                            </button>
 
-      {/* CANCEL BUTTON */}
-      <button
-        type="button"
-        onClick={() => setEditingReviewId(null)}
-        className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-all hover:bg-opacity-80 ${
-          dark ? 'bg-white/10 text-white' : 'bg-gray-200 text-gray-700'
-        }`}
-      >
-        Cancel
-      </button>
-    </div>
-  </div>
-) : (
-  /* This is your normal review text display */
-  <p className={`leading-relaxed ${dark ? 'text-gray-300' : 'text-gray-700'}`}>
-    {review.body}
-  </p>
-)}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingReviewId(null);
+                                setEditError('');
+                              }}
+                              className={`rounded-xl px-5 py-2.5 text-sm font-bold transition-all hover:bg-opacity-80 ${
+                                dark ? 'bg-white/10 text-white' : 'bg-gray-200 text-gray-700'
+                              }`}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <p className={`leading-relaxed ${dark ? 'text-gray-300' : 'text-gray-700'}`}>
+                            {review.body}
+                          </p>
+                          {isAuthenticated && user?.id === review.user_id && !withinEditWindow ? (
+                            <p className={`mt-2 text-xs ${dark ? 'text-white/50' : 'text-black/50'}`}>
+                              Reviews can only be edited within 24 hours of posting.
+                            </p>
+                          ) : null}
+                        </>
+                      )}
+                          </>
+                        );
+                      })()}
                       {(() => {
                         const photos = reviewPhotosByReviewId[String(review.review_id)] ?? [];
                         if (photos.length === 0) return null;
@@ -1080,13 +1157,15 @@ const handleDeleteReview = async (reviewId) => {
                     <button 
                       type="button"
                       onClick={async () => {
-                        const isLiked = likeButton[reviewIdx];
-                        const newButtons = likeButton.map((b, bIdx) => bIdx === reviewIdx ? !b : b);
-                        setLikeButton(newButtons);
+                        const isLiked = !!likedByReviewId[review.review_id];
+                        setLikedByReviewId((prev) => ({
+                          ...prev,
+                          [review.review_id]: !isLiked,
+                        }));
 
                         setReviews(prevReviews => {
-                          return prevReviews.map((r, rIdx) => {
-                            if (rIdx == reviewIdx) {
+                          return prevReviews.map((r) => {
+                            if (r.review_id === review.review_id) {
                               return {
                                 ...r,
                                 helpful_count: isLiked ? Number(r.helpful_count) - 1 : Number(r.helpful_count) + 1
@@ -1130,7 +1209,7 @@ const handleDeleteReview = async (reviewId) => {
                           console.error("Error updating like status:", error.message);
                         }
                       }} 
-                      className={`flex items-center justify-center rounded-lg ${likeButton[reviewIdx] == true ? 'text-[#ffbf3e] hover:text-[#d08e0f]' : 'text-gray-400 hover:text-gray-500'} transition hover:scale-105 active:scale-95 mt-4`}
+                      className={`flex items-center justify-center rounded-lg ${likedByReviewId[review.review_id] ? 'text-[#ffbf3e] hover:text-[#d08e0f]' : 'text-gray-400 hover:text-gray-500'} transition hover:scale-105 active:scale-95 mt-4`}
                     >
                       <ThumbsUp className="w-5 h-5" />
                     </button>
@@ -1388,6 +1467,20 @@ const handleDeleteReview = async (reviewId) => {
             </div>
           </div>
         </div>
+      )}
+      {deleteReviewId != null && (
+        <ConfirmModal
+          dark={dark}
+          message={deleteErrorMessage ? deleteErrorMessage : 'Are you sure? This will permanently delete the review and all photos.'}
+          confirmLabel="Delete Review"
+          confirmColor="red"
+          loading={deleteLoading}
+          onConfirm={() => doDeleteReview(deleteReviewId)}
+          onCancel={() => {
+            setDeleteReviewId(null);
+            setDeleteErrorMessage('');
+          }}
+        />
       )}
     </div>
   );

@@ -6,6 +6,23 @@ import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../lib/supabase';
 import { REVIEW_STORAGE_BUCKET, resolveReviewImageForDisplay } from '../lib/restaurantImages';
 
+const MIN_REVIEW_CHARS = 50;
+const REVIEW_EDIT_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+function reviewLengthErrorMessage(errMessage) {
+  const msg = String(errMessage || '');
+  if (/at least 50 characters|review body must be at least 50 characters/i.test(msg)) {
+    return `Please write at least ${MIN_REVIEW_CHARS} characters.`;
+  }
+  return msg || 'Unable to save review right now.';
+}
+
+function canEditReview(review) {
+  const createdAt = new Date(review?.created_at ?? '').getTime();
+  if (!Number.isFinite(createdAt)) return false;
+  return Date.now() - createdAt <= REVIEW_EDIT_WINDOW_MS;
+}
+
 function normalizeDisplayRating(rawRating) {
   const numeric = Number(rawRating);
   if (!Number.isFinite(numeric)) return 1;
@@ -177,6 +194,10 @@ export function MyReviewsPage() {
   }, [reviews.length]);
 
   function beginEditing(review) {
+    if (!canEditReview(review)) {
+      setEditError('Reviews can only be edited within 24 hours of posting.');
+      return;
+    }
     setEditError('');
     setEditingReviewId(review.review_id);
     setDraftRating(normalizeDisplayRating(review.rating));
@@ -192,8 +213,16 @@ export function MyReviewsPage() {
 
   async function saveReview(review) {
     setEditError('');
-    setSavingReviewId(review.review_id);
+    if (!canEditReview(review)) {
+      setEditError('Reviews can only be edited within 24 hours of posting.');
+      return;
+    }
     const bodyToSave = draftBody.trim();
+    if (bodyToSave.length < MIN_REVIEW_CHARS) {
+      setEditError(`Please write at least ${MIN_REVIEW_CHARS} characters.`);
+      return;
+    }
+    setSavingReviewId(review.review_id);
 
     const { error } = await supabase
       .from('reviews')
@@ -207,7 +236,7 @@ export function MyReviewsPage() {
 
     if (error) {
       console.error('Error saving review:', error);
-      setEditError(error.message || 'Unable to save review right now.');
+      setEditError(reviewLengthErrorMessage(error.message));
       setSavingReviewId(null);
       return;
     }
@@ -330,9 +359,12 @@ export function MyReviewsPage() {
                 <div className={`${dark ? 'divide-y divide-white/10 border-y border-white/10' : 'divide-y divide-black/10 border-y border-black/10'}`}>
                 {reviews.map((review) => {
                   const displayRating = normalizeDisplayRating(review.rating);
+                  const canEdit = canEditReview(review);
                   const isEditing = editingReviewId === review.review_id;
                   const isSaving = savingReviewId === review.review_id;
                   const isDeleting = deletingReviewId === review.review_id;
+                  const draftCharCount = draftBody.trim().length;
+                  const meetsMinReviewChars = draftCharCount >= MIN_REVIEW_CHARS;
                   const photos = reviewPhotosByReviewId[String(review.review_id)] ?? [];
                   return (
                     <article key={review.review_id} className="py-5">
@@ -411,6 +443,9 @@ export function MyReviewsPage() {
                             }`}
                             placeholder="Update your review..."
                           />
+                          <p className={`text-xs ${meetsMinReviewChars ? (dark ? 'text-white/55' : 'text-black/55') : 'text-red-500'}`}>
+                            Reviews need to be at least {MIN_REVIEW_CHARS} characters ({draftCharCount}/{MIN_REVIEW_CHARS}).
+                          </p>
                           {editError ? (
                             <p className="text-sm font-semibold text-red-500">{editError}</p>
                           ) : null}
@@ -418,7 +453,7 @@ export function MyReviewsPage() {
                             <button
                               type="button"
                               onClick={() => saveReview(review)}
-                              disabled={isSaving}
+                              disabled={isSaving || !meetsMinReviewChars}
                               className={`inline-flex items-center justify-center rounded-full px-4 py-2 text-sm font-bold transition ${
                                 dark
                                   ? 'bg-[#ffbf3e] text-black hover:bg-[#ffd15e] disabled:opacity-60'
@@ -451,7 +486,7 @@ export function MyReviewsPage() {
                               <button
                                 type="button"
                                 onClick={() => beginEditing(review)}
-                                disabled={isDeleting}
+                                disabled={isDeleting || !canEdit}
                                 className={`inline-flex items-center justify-center rounded-full border px-4 py-1.5 text-sm font-semibold transition ${
                                   dark
                                     ? 'border-white/15 text-white/85 hover:bg-white/10 disabled:opacity-60'
@@ -473,6 +508,11 @@ export function MyReviewsPage() {
                                 {isDeleting ? 'Deleting...' : 'Delete'}
                               </button>
                             </div>
+                            {!canEdit ? (
+                              <p className={`mt-2 text-xs ${dark ? 'text-white/50' : 'text-black/50'}`}>
+                                Reviews can only be edited within 24 hours of posting.
+                              </p>
+                            ) : null}
                             {deleteError && deleteErrorReviewId === review.review_id && deletingReviewId === null ? (
                               <p className="mt-2 text-sm font-semibold text-red-500">{deleteError}</p>
                             ) : null}
