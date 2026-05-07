@@ -3,6 +3,7 @@ import Cropper from 'react-easy-crop';
 import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../lib/supabase';
 import { AFFILIATION_OPTIONS } from '../lib/affiliations.js';
+import { compressImageFile } from '../lib/imageCompression.js';
 
 const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png'];
@@ -189,29 +190,59 @@ export function ProfilePage() {
 
   const canSave = !loading && !saving && isDirty;
 
-  function validateImage(file) {
+  function validateImageType(file) {
     if (!file) return '';
     if (!ALLOWED_IMAGE_TYPES.includes(file.type)) return 'Image must be JPG or PNG.';
+    return '';
+  }
+
+  function validateImage(file) {
+    const typeErr = validateImageType(file);
+    if (typeErr) return typeErr;
     if (file.size > MAX_IMAGE_SIZE_BYTES) return 'Image must be 5MB or smaller.';
     return '';
   }
 
-  function handlePhotoChange(event) {
+  async function handlePhotoChange(event) {
     const file = event.target.files?.[0];
     event.target.value = '';
     setMessage({ type: '', text: '' });
     if (!file) return;
-    const errorMessage = validateImage(file);
-    if (errorMessage) {
+    const typeError = validateImageType(file);
+    if (typeError) {
       setPhotoFile(null);
       setPhotoAction('keep');
-      setFieldErrors((prev) => ({ ...prev, photo: errorMessage }));
+      setFieldErrors((prev) => ({ ...prev, photo: typeError }));
+      return;
+    }
+    let working = file;
+    if (file.size > MAX_IMAGE_SIZE_BYTES) {
+      try {
+        working = await compressImageFile(file, {
+          maxBytes: MAX_IMAGE_SIZE_BYTES,
+          preservePng: true,
+        });
+      } catch (err) {
+        setPhotoFile(null);
+        setPhotoAction('keep');
+        setFieldErrors((prev) => ({
+          ...prev,
+          photo: err?.message || 'Unable to shrink that image. Try another file.',
+        }));
+        return;
+      }
+    }
+    const sizeError = validateImage(working);
+    if (sizeError) {
+      setPhotoFile(null);
+      setPhotoAction('keep');
+      setFieldErrors((prev) => ({ ...prev, photo: sizeError }));
       return;
     }
     const reader = new FileReader();
     reader.onload = () => {
       setCropImageSrc(String(reader.result || ''));
-      setCropSourceFile(file);
+      setCropSourceFile(working);
       setCropPosition({ x: 0, y: 0 });
       setCropZoom(1);
       setCropPixels(null);
@@ -221,7 +252,7 @@ export function ProfilePage() {
     reader.onerror = () => {
       setFieldErrors((prev) => ({ ...prev, photo: 'Unable to preview selected image.' }));
     };
-    reader.readAsDataURL(file);
+    reader.readAsDataURL(working);
   }
 
   function handleRemovePhoto() {
@@ -266,7 +297,13 @@ export function ProfilePage() {
     if (!cropImageSrc || !cropPixels || !cropSourceFile) return;
     setCropProcessing(true);
     try {
-      const croppedFile = await buildCroppedFile(cropImageSrc, cropPixels, cropSourceFile);
+      let croppedFile = await buildCroppedFile(cropImageSrc, cropPixels, cropSourceFile);
+      if (croppedFile.size > MAX_IMAGE_SIZE_BYTES) {
+        croppedFile = await compressImageFile(croppedFile, {
+          maxBytes: MAX_IMAGE_SIZE_BYTES,
+          preservePng: true,
+        });
+      }
       const errorMessage = validateImage(croppedFile);
       if (errorMessage) {
         setFieldErrors((prev) => ({ ...prev, photo: errorMessage }));

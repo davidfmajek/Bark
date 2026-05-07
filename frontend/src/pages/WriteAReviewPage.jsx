@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../lib/supabase';
+import { compressImageFile } from '../lib/imageCompression.js';
 import { resolveRestaurantCardImageUrl, REVIEW_STORAGE_BUCKET } from '../lib/restaurantImages';
 
 const MIN_REVIEW_CHARS = 50;
@@ -299,6 +300,8 @@ function ReviewFormStep({
   formLoading,
 }) {
   const [photoPreviews, setPhotoPreviews] = useState([]);
+  const [photoPickWorking, setPhotoPickWorking] = useState(false);
+  const [photoPickNotice, setPhotoPickNotice] = useState('');
 
   useEffect(() => {
     const urls = reviewPhotos.map((f) => URL.createObjectURL(f));
@@ -414,13 +417,13 @@ function ReviewFormStep({
             <div>
               <h2 className="text-lg font-bold">Add photos (optional)</h2>
               <p className={`mt-1 text-sm ${dark ? 'text-white/50' : 'text-black/45'}`}>
-                Up to {MAX_REVIEW_IMAGES} images — JPEG, PNG, WebP, or HEIC/HEIF, max{' '}
-                {Math.round(MAX_REVIEW_IMAGE_BYTES / (1024 * 1024))} MB each.
+                Up to {MAX_REVIEW_IMAGES} images — JPEG, PNG, WebP, or HEIC/HEIF. Large files are resized to
+                about {Math.round(MAX_REVIEW_IMAGE_BYTES / (1024 * 1024))} MB or smaller when possible.
               </p>
               <div className="mt-3 flex flex-wrap items-center gap-3">
                 <label
                   className={`inline-flex cursor-pointer items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-semibold transition ${
-                    reviewPhotos.length >= MAX_REVIEW_IMAGES
+                    reviewPhotos.length >= MAX_REVIEW_IMAGES || photoPickWorking
                       ? dark
                         ? 'cursor-not-allowed border-white/10 text-white/35'
                         : 'cursor-not-allowed border-black/10 text-black/35'
@@ -429,27 +432,64 @@ function ReviewFormStep({
                         : 'border-black/15 text-black hover:bg-black/[0.04]'
                   }`}
                 >
-                  <ImagePlus className="h-4 w-4 shrink-0" aria-hidden />
-                  {reviewPhotos.length >= MAX_REVIEW_IMAGES ? 'Photo limit reached' : 'Choose photos'}
+                  {photoPickWorking ? (
+                    <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+                  ) : (
+                    <ImagePlus className="h-4 w-4 shrink-0" aria-hidden />
+                  )}
+                  {reviewPhotos.length >= MAX_REVIEW_IMAGES
+                    ? 'Photo limit reached'
+                    : photoPickWorking
+                      ? 'Processing…'
+                      : 'Choose photos'}
                   <input
                     type="file"
                     accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif"
                     multiple
-                    disabled={reviewPhotos.length >= MAX_REVIEW_IMAGES}
+                    disabled={reviewPhotos.length >= MAX_REVIEW_IMAGES || photoPickWorking}
                     className="sr-only"
-                    onChange={(e) => {
+                    onChange={async (e) => {
                       const picked = Array.from(e.target.files || []);
                       e.target.value = '';
-                      setReviewPhotos((prev) => {
-                        const next = [...prev];
+                      if (picked.length === 0) return;
+                      setPhotoPickWorking(true);
+                      setPhotoPickNotice('');
+                      const errors = [];
+                      let merged = [...reviewPhotos];
+                      try {
                         for (const file of picked) {
-                          if (!getReviewImageMeta(file)) continue;
-                          if (file.size > MAX_REVIEW_IMAGE_BYTES) continue;
-                          if (next.length >= MAX_REVIEW_IMAGES) break;
-                          next.push(file);
+                          if (merged.length >= MAX_REVIEW_IMAGES) break;
+                          if (!getReviewImageMeta(file)) {
+                            errors.push(`${file.name}: not a supported type.`);
+                            continue;
+                          }
+                          try {
+                            const out = await compressImageFile(file, {
+                              maxBytes: MAX_REVIEW_IMAGE_BYTES,
+                              preservePng: 'auto',
+                            });
+                            if (!getReviewImageMeta(out)) {
+                              errors.push(`${file.name}: could not be prepared.`);
+                              continue;
+                            }
+                            if (out.size > MAX_REVIEW_IMAGE_BYTES) {
+                              errors.push(`${file.name}: still too large after compressing.`);
+                              continue;
+                            }
+                            merged.push(out);
+                          } catch (err) {
+                            errors.push(`${file.name}: ${err?.message || 'could not process'}`);
+                          }
                         }
-                        return next;
-                      });
+                        setReviewPhotos(merged);
+                        if (errors.length > 0) {
+                          setPhotoPickNotice(
+                            errors.slice(0, 2).join(' ') + (errors.length > 2 ? ` (+${errors.length - 2} more)` : ''),
+                          );
+                        }
+                      } finally {
+                        setPhotoPickWorking(false);
+                      }
                     }}
                   />
                 </label>
@@ -457,6 +497,11 @@ function ReviewFormStep({
                   {reviewPhotos.length}/{MAX_REVIEW_IMAGES} added
                 </span>
               </div>
+              {photoPickNotice ? (
+                <p className={`mt-2 text-sm ${dark ? 'text-amber-300/90' : 'text-amber-800'}`} role="status">
+                  {photoPickNotice}
+                </p>
+              ) : null}
               {reviewPhotos.length > 0 ? (
                 <ul className="mt-4 flex flex-wrap gap-3">
                   {reviewPhotos.map((file, i) => (
@@ -727,7 +772,21 @@ export function WriteAReviewPage() {
     }
 
     const photosToUpload = reviewPhotos.slice(0, MAX_REVIEW_IMAGES);
-    for (const f of photosToUpload) {
+    let photosReady = photosToUpload;
+    try {
+      photosReady = await Promise.all(
+        photosToUpload.map((f) =>
+          compressImageFile(f, {
+            maxBytes: MAX_REVIEW_IMAGE_BYTES,
+            preservePng: 'auto',
+          }),
+        ),
+      );
+    } catch (err) {
+      setErrorMessage(err?.message || 'Could not prepare photos. Try different images or remove photos and submit again.');
+      return;
+    }
+    for (const f of photosReady) {
       if (!getReviewImageMeta(f) || f.size > MAX_REVIEW_IMAGE_BYTES) {
         setErrorMessage(
           'Photos must be JPEG, PNG, WebP, or HEIC/HEIF and at most 5 MB each.',
@@ -763,8 +822,8 @@ export function WriteAReviewPage() {
     const uploadedPaths = [];
 
     try {
-      for (let i = 0; i < photosToUpload.length; i++) {
-        const file = photosToUpload[i];
+      for (let i = 0; i < photosReady.length; i++) {
+        const file = photosReady[i];
         const meta = getReviewImageMeta(file);
         const ext = meta.ext;
         const objectPath = `review-images/${reviewId}/${i + 1}.${ext}`;
@@ -777,7 +836,7 @@ export function WriteAReviewPage() {
       }
 
       if (uploadedPaths.length > 0) {
-        const imageRows = photosToUpload.map((file, i) => ({
+        const imageRows = photosReady.map((file, i) => ({
           review_id: reviewId,
           storage_url: uploadedPaths[i],
           display_order: i + 1,
@@ -793,8 +852,12 @@ export function WriteAReviewPage() {
         await supabase.storage.from(REVIEW_STORAGE_BUCKET).remove(uploadedPaths);
       }
       await supabase.from('reviews').delete().eq('review_id', reviewId);
+      const raw = err?.message || String(err);
+      const sizeRejected = /exceeded the maximum allowed size|maximum allowed size/i.test(raw);
       setErrorMessage(
-        err?.message || 'Review was not saved because photo upload failed. Please try again without photos or check your connection.',
+        sizeRejected
+          ? 'Storage rejected a photo because the review-media bucket limit is too low. In the Supabase dashboard open Storage → review-media → increase the max file size to at least 5 MB (or run supabase/storage_review_media_bucket.sql).'
+          : raw || 'Review was not saved because photo upload failed. Please try again without photos or check your connection.',
       );
       setSaving(false);
       return;
