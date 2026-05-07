@@ -836,11 +836,11 @@ export function EstablishmentPage() {
         )}
 
         {!galleryLoading && photoCount >= 1 && (
-          <div className="absolute bottom-4 right-4 z-20 sm:bottom-5 sm:right-6">
+          <div className="absolute right-4 top-4 z-30 sm:bottom-5 sm:right-6 sm:top-auto">
             <button
               type="button"
               onClick={() => setGalleryModalOpen(true)}
-              className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-[#1a1a1a]/90 px-4 py-2 text-sm font-semibold text-white/95 shadow-lg backdrop-blur-md transition hover:bg-black/90 hover:ring-1 hover:ring-white/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#ffbf3e]"
+              className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-[#1a1a1a]/90 px-3 py-1.5 text-xs font-semibold text-white/95 shadow-lg backdrop-blur-md transition hover:bg-black/90 hover:ring-1 hover:ring-white/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#ffbf3e] sm:px-4 sm:py-2 sm:text-sm"
               aria-label={`View all ${photoCount} photos`}
             >
               <Images className="h-4 w-4 shrink-0" aria-hidden />
