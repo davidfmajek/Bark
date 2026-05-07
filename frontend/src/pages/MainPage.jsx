@@ -17,8 +17,8 @@ export function MainPage() {
         </>
       )}
 
-      <div className="relative z-10 mx-auto flex min-h-[calc(100vh-3.5rem)] max-w-4xl items-center justify-center px-6">
-        <div className={`w-full max-w-xl rounded-[28px] border px-8 py-12 text-center backdrop-blur-sm ${dark ? 'border-white/10 bg-[#161b26] shadow-xl' : 'border-black/10 bg-white shadow-lg'}`}>
+      <div className="relative z-10 mx-auto flex min-h-[calc(100vh-3.5rem)] max-w-4xl items-center justify-center px-4 sm:px-6">
+        <div className={`w-full max-w-xl rounded-[28px] border px-6 py-10 text-center backdrop-blur-sm sm:px-8 sm:py-12 ${dark ? 'border-white/10 bg-[#161b26] shadow-xl' : 'border-black/10 bg-white shadow-lg'}`}>
           <p className={`mb-3 font-body text-sm font-semibold uppercase tracking-[0.28em] ${dark ? 'text-[#f5bf3e]/80' : 'text-[#D4A017]'}`}>
             Main Page
           </p>

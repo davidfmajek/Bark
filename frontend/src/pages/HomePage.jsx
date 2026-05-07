@@ -294,7 +294,7 @@ export function HomePage() {
                   </div>
                 </div>
                 <div className="mt-3"><Stars rating={t.rating} dark={dark} /></div>
-                <p className={`mt-3 line-clamp-4 break-words text-sm italic leading-relaxed ${dark ? 'text-white/75' : 'text-black/70'}`}>
+                <p className={`mt-3 line-clamp-4 break-words text-sm italic leading-relaxed [overflow-wrap:anywhere] ${dark ? 'text-white/75' : 'text-black/70'}`}>
                   “{t.content.length > 120 ? `${t.content.substring(0, 120)}...` : t.content}”
                 </p>
               </Link>

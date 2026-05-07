@@ -154,17 +154,17 @@ export function MapPage() {
                   }}
                 >
                   <Popup>
-                    <div className="space-y-1">
+                    <div className="max-w-[16rem] space-y-1">
                       <a
                         href={location.href}
-                        className="text-sm font-bold underline underline-offset-2"
+                        className="block break-words text-sm font-bold underline underline-offset-2 [overflow-wrap:anywhere]"
                       >
                         {location.name}
                       </a>
                       {typeof location.rating === 'number' && (
                         <p className="text-xs font-semibold">Rating: {location.rating.toFixed(1)} / 5</p>
                       )}
-                      <p className="text-xs leading-relaxed">{location.description}</p>
+                      <p className="break-words text-xs leading-relaxed [overflow-wrap:anywhere]">{location.description}</p>
                     </div>
                   </Popup>
                 </Marker>
@@ -212,7 +212,7 @@ export function MapPage() {
                     <div className="flex items-start justify-between gap-3">
                       <button
                         type="button"
-                        className={`font-semibold underline underline-offset-2 transition-colors ${
+                        className={`min-w-0 flex-1 break-words text-left font-semibold underline underline-offset-2 transition-colors [overflow-wrap:anywhere] ${
                           dark ? 'hover:text-[#f5bf3e]' : 'hover:text-[#8a6110]'
                         }`}
                         onClick={(event) => {
@@ -223,13 +223,13 @@ export function MapPage() {
                         {location.name}
                       </button>
                       {typeof location.rating === 'number' && (
-                        <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${dark ? 'bg-[#f5bf3e]/20 text-[#f5bf3e]' : 'bg-[#f0d9a2] text-[#7a5408]'}`}>
+                        <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${dark ? 'bg-[#f5bf3e]/20 text-[#f5bf3e]' : 'bg-[#f0d9a2] text-[#7a5408]'}`}>
                           {location.rating.toFixed(1)}
                         </span>
                       )}
                     </div>
 
-                    <p className={`mt-1 text-xs leading-relaxed ${dark ? 'text-white/65' : 'text-black/60'}`}>
+                    <p className={`mt-1 break-words text-xs leading-relaxed [overflow-wrap:anywhere] ${dark ? 'text-white/65' : 'text-black/60'}`}>
                       {location.description}
                     </p>
                   </div>

@@ -81,12 +81,12 @@ export function AnalyticsTab({ dark, analytics, loading, mutedText }) {
         </div>
         <div className={`rounded-2xl border p-4 ${dark ? 'border-white/8 bg-[#161b26]' : 'border-black/8 bg-white'}`}>
           <p className={`text-xs uppercase tracking-wider ${mutedText}`}>Most Reviewed</p>
-          <p className="mt-1 text-sm font-semibold">{analytics.mostReviewed?.name || '—'}</p>
+          <p className="mt-1 break-words text-sm font-semibold [overflow-wrap:anywhere]">{analytics.mostReviewed?.name || '—'}</p>
           <p className={`text-xs ${mutedText}`}>{analytics.mostReviewed ? `${analytics.mostReviewed.count} reviews` : 'No reviews yet'}</p>
         </div>
         <div className={`rounded-2xl border p-4 ${dark ? 'border-white/8 bg-[#161b26]' : 'border-black/8 bg-white'}`}>
           <p className={`text-xs uppercase tracking-wider ${mutedText}`}>Lowest Rated</p>
-          <p className="mt-1 text-sm font-semibold">{analytics.lowestRated?.name || '—'}</p>
+          <p className="mt-1 break-words text-sm font-semibold [overflow-wrap:anywhere]">{analytics.lowestRated?.name || '—'}</p>
           <p className={`text-xs ${mutedText}`}>{analytics.lowestRated ? `${analytics.lowestRated.avg.toFixed(2)} avg` : 'No ratings yet'}</p>
         </div>
       </div>

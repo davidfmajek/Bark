@@ -36,13 +36,14 @@ function canEditReview(review) {
 
 const StarFilter = ({ value, onChange, dark }) => {
   return (
-    <div className="flex items-center gap-1 bg-black/5 dark:bg-white/5 p-1.5 px-3 rounded-full">
+    <div className="flex items-center gap-1 rounded-full bg-black/5 px-2.5 py-1 dark:bg-white/5 sm:px-3 sm:py-1.5">
       {/* "All" button to reset the filter */}
       <button
+        type="button"
         onClick={() => onChange('all')}
-        className={`text-xs font-bold mr-2 uppercase transition-colors ${
-          value === 'all' 
-            ? (dark ? 'text-white' : 'text-black') 
+        className={`mr-1.5 text-[11px] font-bold uppercase transition-colors sm:mr-2 sm:text-xs ${
+          value === 'all'
+            ? dark ? 'text-white' : 'text-black'
             : 'text-gray-400 hover:text-gray-500'
         }`}
       >
@@ -54,15 +55,18 @@ const StarFilter = ({ value, onChange, dark }) => {
         {[1, 2, 3, 4, 5].map((num) => (
           <button
             key={num}
+            type="button"
             onClick={() => onChange(num)}
             className="transition-transform active:scale-90"
+            aria-label={`Filter by ${num} star${num === 1 ? '' : 's'}`}
           >
-            <span className={`text-xl ${
-              // If current star is less than or equal to selection, highlight it
-              value !== 'all' && num <= value 
-                ? 'text-yellow-400' 
-                : 'text-gray-300 dark:text-gray-600'
-            }`}>
+            <span
+              className={`text-base leading-none sm:text-xl ${
+                value !== 'all' && num <= value
+                  ? 'text-yellow-400'
+                  : 'text-gray-300 dark:text-gray-600'
+              }`}
+            >
               ★
             </span>
           </button>
@@ -787,7 +791,7 @@ export function EstablishmentPage() {
                   setPanelBroken={setPanelBroken}
                   dark={dark}
                   className="h-full min-h-[9rem]"
-                />heroesData?.publicUrl
+                />
               </div>
             </div>
           </div>
@@ -851,24 +855,24 @@ export function EstablishmentPage() {
           }`}
         />
 
-        <div className="pointer-events-none absolute inset-0 z-10 flex flex-col justify-end px-6 pb-10 sm:container sm:mx-auto sm:px-6 sm:pb-12">
-          <div className="pointer-events-auto space-y-4">
-            <h1 className="font-display text-4xl font-black tracking-tight text-white drop-shadow-sm sm:text-5xl md:text-7xl">
+        <div className="pointer-events-none absolute inset-0 z-10 flex flex-col justify-end px-4 pb-8 sm:container sm:mx-auto sm:px-6 sm:pb-12">
+          <div className="pointer-events-auto space-y-3 sm:space-y-4">
+            <h1 className="break-words font-display text-3xl font-black tracking-tight text-white drop-shadow-sm sm:text-5xl md:text-7xl [overflow-wrap:anywhere]">
               {establishment.name}
             </h1>
-            <div className="flex flex-wrap gap-3 text-white">
-              <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/45 px-4 py-2 backdrop-blur-md">
-                <Star className="h-5 w-5 fill-[#ffbf3e] text-[#ffbf3e]" />
-                <span className="text-lg font-bold">
+            <div className="flex flex-wrap gap-2 text-white sm:gap-3">
+              <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/45 px-3 py-1.5 backdrop-blur-md sm:px-4 sm:py-2">
+                <Star className="h-4 w-4 fill-[#ffbf3e] text-[#ffbf3e] sm:h-5 sm:w-5" />
+                <span className="text-base font-bold sm:text-lg">
                   {Number(establishment.average_rating ?? establishment.rating ?? 0).toFixed(1)}
                 </span>
-                <span className="text-sm opacity-80">
+                <span className="text-xs opacity-80 sm:text-sm">
                   ({establishment.total_reviews ?? establishment.reviews ?? reviews.length ?? 0} reviews)
                 </span>
               </div>
-              <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/45 px-4 py-2 backdrop-blur-md">
-                <MapPin className="h-5 w-5 text-[#ffbf3e]" />
-                <span className="font-medium">{establishment.building_name || establishment.address}</span>
+              <div className="flex min-w-0 items-center gap-2 rounded-xl border border-white/10 bg-black/45 px-3 py-1.5 backdrop-blur-md sm:px-4 sm:py-2">
+                <MapPin className="h-4 w-4 shrink-0 text-[#ffbf3e] sm:h-5 sm:w-5" />
+                <span className="truncate text-sm font-medium sm:text-base">{establishment.building_name || establishment.address}</span>
               </div>
             </div>
           </div>
@@ -876,83 +880,83 @@ export function EstablishmentPage() {
       </div>
           
       {/* Detailed Content */}
-      <main className="container mx-auto px-6 py-12">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
+      <main className="container mx-auto px-4 py-8 sm:px-6 sm:py-12">
+        <div className="grid grid-cols-1 gap-10 lg:grid-cols-3 lg:gap-12">
           
           {/* Left Column: Info & Reviews */}
-          <div className="lg:col-span-2 space-y-12">
+          <div className="min-w-0 space-y-10 lg:col-span-2 lg:space-y-12">
             <section>
-              <h3 className="text-2xl font-bold mb-6 flex items-center gap-3">
-                <Info className="text-[#ffbf3e] w-6 h-6" /> About this spot
+              <h3 className="mb-4 flex items-center gap-3 text-xl font-bold sm:mb-6 sm:text-2xl">
+                <Info className="h-5 w-5 text-[#ffbf3e] sm:h-6 sm:w-6" /> About this spot
               </h3>
-              <p className={`text-xl leading-relaxed ${dark ? 'text-gray-400' : 'text-gray-600'}`}>
+              <p className={`whitespace-pre-wrap break-words text-base leading-relaxed [overflow-wrap:anywhere] sm:text-xl ${dark ? 'text-gray-400' : 'text-gray-600'}`}>
                 {establishment.description || `Welcome to ${establishment.name}. Experience quality dining located right here at ${establishment.building_name || 'UMBC\' scampus'}.`}
               </p>
             </section>
 
             {/* Reviews Section */}
-            <section className="pt-10 border-t border-white/10">
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
-                <h3 className="text-3xl font-bold">Retriever Reviews</h3>
-                
+            <section className="pt-8 border-t border-white/10 sm:pt-10">
+              <div className="mb-6 flex flex-col items-start justify-between gap-3 sm:mb-8 sm:flex-row sm:items-center sm:gap-4">
+                <h3 className="text-2xl font-bold sm:text-3xl">Retriever Reviews</h3>
+
                 {isAuthenticated && (
                   <Link
                     to={`/restaurants/${establishment.establishment_id}/writeareview`}
-                    className="inline-flex items-center gap-2 rounded-xl bg-[#ffbf3e] px-6 py-3 text-black font-bold transition-all hover:bg-white hover:scale-105 active:scale-95"
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#ffbf3e] px-5 py-2.5 text-sm font-bold text-black transition-all hover:bg-white hover:scale-105 active:scale-95 sm:w-auto sm:px-6 sm:py-3 sm:text-base"
                   >
-                    <FilePenLine className="w-5 h-5" />
+                    <FilePenLine className="h-4 w-4 sm:h-5 sm:w-5" />
                     Write a Review
                   </Link>
                 )}
               </div>
 
-              {/* Empty State Placeholder */}
               {/* Filters Container */}
-<div className="flex items-center justify-between w-full">  
-  {/* Star Filter */}
-  <div className="flex items-center gap-2">
-  <StarFilter 
-      value={filterStar} 
-      onChange={setFilterStar} 
-      dark={dark} 
-    />
+              <div className="mb-6 flex w-full flex-col gap-3 md:flex-row md:flex-wrap md:items-center md:justify-between">
+                {/* Star + Time Filters */}
+                <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                  <StarFilter
+                    value={filterStar}
+                    onChange={setFilterStar}
+                    dark={dark}
+                  />
+                  <CustomDropdown
+                    value={filterTime}
+                    onChange={setFilterTime}
+                    dark={dark}
+                    colorClass={dark ? 'text-white' : 'text-gray-700'}
+                    options={[
+                      { value: 'all', label: 'Anytime' },
+                      { value: 'week', label: 'Past Week' },
+                      { value: 'month', label: 'Past Month' },
+                      { value: 'year', label: 'Past Year' },
+                    ]}
+                  />
+                </div>
 
-  {/* Time Filter */}
-  <CustomDropdown
-    value={filterTime}
-    onChange={setFilterTime}
-    dark={dark}
-    colorClass={dark ? 'text-white' : 'text-gray-700'}
-    options={[
-      { value: 'all', label: 'Anytime' },
-      { value: 'week', label: 'Past Week' },
-      { value: 'month', label: 'Past Month' },
-      { value: 'year', label: 'Past Year' },
-    ]}
-  />
-</div>
-  {/* Sort Order */}
-  <div className="flex items-center gap-2">
-    <span className="text-xs font-bold uppercase opacity-50">Sort By:</span>
-    <CustomDropdown
-      value={sortType}
-      onChange={setSortType}
-      dark={dark}
-      colorClass={dark ? 'text-[#ffbf3e]' : 'text-orange-600'}
-      options={[
-        { value: 'recency-desc', label: 'Newest First' },
-        { value: 'recency-asc', label: 'Oldest First' },
-        { value: 'star-desc', label: 'Highest Rated' },
-        { value: 'star-asc', label: 'Lowest Rated' },
-        { value: 'likes-desc', label: 'Most Helpful' },
-        { value: 'likes-asc', label: 'Least Helpful' },
-      ]}
-    />
-  </div>
-</div>
+                {/* Sort Order */}
+                <div className="flex items-center gap-2 whitespace-nowrap">
+                  <span className="text-[11px] font-bold uppercase tracking-wide opacity-50 sm:text-xs">
+                    Sort By:
+                  </span>
+                  <CustomDropdown
+                    value={sortType}
+                    onChange={setSortType}
+                    dark={dark}
+                    colorClass={dark ? 'text-[#ffbf3e]' : 'text-orange-600'}
+                    options={[
+                      { value: 'recency-desc', label: 'Newest First' },
+                      { value: 'recency-asc', label: 'Oldest First' },
+                      { value: 'star-desc', label: 'Highest Rated' },
+                      { value: 'star-asc', label: 'Lowest Rated' },
+                      { value: 'likes-desc', label: 'Most Helpful' },
+                      { value: 'likes-asc', label: 'Least Helpful' },
+                    ]}
+                  />
+                </div>
+              </div>
               {processedReviews.length === 0 && (
-                <div className={`p-16 rounded-[2rem] border-2 border-dashed ${dark ? 'border-white/10 bg-white/5' : 'border-black/5 bg-gray-50'} text-center`}>
-                <p className="text-lg opacity-40">No reviews have been posted yet. Be the first to share your thoughts!</p>
+                <div className={`rounded-3xl border-2 border-dashed p-8 text-center sm:p-16 ${dark ? 'border-white/10 bg-white/5' : 'border-black/5 bg-gray-50'}`}>
+                  <p className="text-base opacity-40 sm:text-lg">No reviews have been posted yet. Be the first to share your thoughts!</p>
                 </div>
               )}
               
@@ -962,7 +966,7 @@ export function EstablishmentPage() {
                     <div
                       id={`review-${review.review_id}`}
                       key={review.review_id}
-                      className={`relative rounded-xl p-6 transition-all ${
+                      className={`relative min-w-0 overflow-hidden rounded-xl p-4 transition-all sm:p-6 ${
                         highlightedReviewId === String(review.review_id)
                           ? dark
                             ? 'ring-2 ring-[#f5bf3e] bg-[#1c2233] shadow-[0_0_0_4px_rgba(245,191,62,0.22)]'
@@ -974,51 +978,17 @@ export function EstablishmentPage() {
                     >
                       {(() => {
                         const withinEditWindow = canEditReview(review);
-                        return (
-                          <>
-                      {/* Author Actions: Positioned in top right */}
-                      {isAuthenticated && user?.id === review.user_id && (
-                        <div className="absolute right-6 top-6 flex gap-3">
-                          {withinEditWindow ? (
-                            <button
-                              onClick={() => {
-                                setEditingReviewId(review.review_id);
-                                setEditBuffer(review.body);
-                                setEditRating(review.rating);
-                                setEditError('');
-                              }}
-                              className={`rounded-lg p-2 transition-colors ${
-                                dark ? 'text-gray-500 hover:bg-white/5 hover:text-[#ffbf3e]' : 'text-gray-400 hover:bg-black/5 hover:text-[#ffbf3e]'
-                              }`}
-                            >
-                              <Pen className="h-5 w-5" />
-                            </button>
-                          ) : null}
-
-                          <button
-                            onClick={() => {
-                              setDeleteErrorMessage('');
-                              setDeleteReviewId(review.review_id);
-                            }}
-                            className={`rounded-lg p-2 transition-colors ${dark ? 'text-gray-500 hover:bg-white/5 hover:text-red-500' : 'text-gray-400 hover:bg-black/5 hover:text-red-500'}`}
-                            title="Delete Review"
-                          >
-                            <Trash2 className="h-5 w-5" />
-                          </button>
-                        </div>
-                      )}
-                      {(() => {
                         const reviewUser = users.find((u) => u.user_id === review.user_id);
                         const rating = review.rating;
                         const displayName = getDisplayName(reviewUser);
                         const avatarUrl = getAvatarUrl(reviewUser);
                         const affiliation = getAffiliation(reviewUser);
                         const avatarBroken = brokenAvatars[String(review.user_id)] === true;
-                        
+                        const isAuthor = isAuthenticated && user?.id === review.user_id;
                         return (
-                          
-                      <div className="flex items-center gap-4 mb-4">
-                        <div className="w-12 h-12 overflow-hidden rounded-full bg-[#ffbf3e] ring-1 ring-white/15 flex items-center justify-center text-white font-bold">
+                          <>
+                      <div className="mb-4 flex items-start gap-3 sm:gap-4">
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#ffbf3e] font-bold text-white ring-1 ring-white/15 sm:h-12 sm:w-12">
                           {avatarUrl && !avatarBroken ? (
                             <img
                               src={avatarUrl}
@@ -1033,14 +1003,14 @@ export function EstablishmentPage() {
                               }
                             />
                           ) : (
-                            getInitials(displayName) 
+                            getInitials(displayName)
                           )}
                         </div>
-                        
-                        <div>
-                          <h4 className="font-bold leading-tight">{displayName}</h4>
+
+                        <div className="min-w-0 flex-1">
+                          <h4 className="break-words font-bold leading-tight [overflow-wrap:anywhere]">{displayName}</h4>
                           {affiliation && (
-                            <p className={`text-xs font-semibold leading-tight ${dark ? 'text-white/75' : 'text-black/65'}`}>
+                            <p className={`break-words text-xs font-semibold leading-tight ${dark ? 'text-white/75' : 'text-black/65'}`}>
                               {affiliation}
                             </p>
                           )}
@@ -1048,11 +1018,45 @@ export function EstablishmentPage() {
                           <p className={`text-sm ${dark ? 'text-gray-400' : 'text-gray-500'}`}>
                             {formatRelativeReviewTime(review.updated_at)}
                           </p>
-                          
                         </div>
+
+                        {isAuthor && (
+                          <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+                            {withinEditWindow ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingReviewId(review.review_id);
+                                  setEditBuffer(review.body);
+                                  setEditRating(review.rating);
+                                  setEditError('');
+                                }}
+                                aria-label="Edit review"
+                                className={`rounded-lg p-1.5 transition-colors sm:p-2 ${
+                                  dark ? 'text-gray-500 hover:bg-white/5 hover:text-[#ffbf3e]' : 'text-gray-400 hover:bg-black/5 hover:text-[#ffbf3e]'
+                                }`}
+                              >
+                                <Pen className="h-4 w-4 sm:h-5 sm:w-5" />
+                              </button>
+                            ) : null}
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setDeleteErrorMessage('');
+                                setDeleteReviewId(review.review_id);
+                              }}
+                              aria-label="Delete review"
+                              title="Delete Review"
+                              className={`rounded-lg p-1.5 transition-colors sm:p-2 ${
+                                dark ? 'text-gray-500 hover:bg-white/5 hover:text-red-500' : 'text-gray-400 hover:bg-black/5 hover:text-red-500'
+                              }`}
+                            >
+                              <Trash2 className="h-4 w-4 sm:h-5 sm:w-5" />
+                            </button>
+                          </div>
+                        )}
                       </div>
-                        );
-                      })()}
                       {editingReviewId === review.review_id ? (
                         <div className="mt-2 space-y-4">
                           <div className="flex gap-1">
@@ -1116,7 +1120,7 @@ export function EstablishmentPage() {
                         </div>
                       ) : (
                         <>
-                          <p className={`leading-relaxed ${dark ? 'text-gray-300' : 'text-gray-700'}`}>
+                          <p className={`whitespace-pre-wrap break-words leading-relaxed [overflow-wrap:anywhere] ${dark ? 'text-gray-300' : 'text-gray-700'}`}>
                             {review.body}
                           </p>
                           {isAuthenticated && user?.id === review.user_id && !withinEditWindow ? (
@@ -1230,9 +1234,9 @@ export function EstablishmentPage() {
           
           {/* Right Column: Sidebar Stats */}
           <div className="space-y-6">
-            <div className={`p-8 rounded-[2rem] border ${dark ? 'bg-gray-900/40 border-white/10' : 'bg-gray-50 border-black/5 shadow-sm'}`}>
-              <h4 className="font-bold font-serif text-2xl mb-6 flex items-center gap-3 ">
-                <Clock font-serif className={"w-6 h-6 text-[#ffbf3e]"} /> Operating Hours
+            <div className={`rounded-3xl border p-6 sm:p-8 ${dark ? 'bg-gray-900/40 border-white/10' : 'bg-gray-50 border-black/5 shadow-sm'}`}>
+              <h4 className="mb-5 flex items-center gap-3 font-serif text-xl font-bold sm:mb-6 sm:text-2xl">
+                <Clock className="h-5 w-5 text-[#ffbf3e] sm:h-6 sm:w-6" /> Operating Hours
               </h4>
               <div>
                   {hours.length > 0 ? (
@@ -1332,7 +1336,7 @@ export function EstablishmentPage() {
               }`}
             >
               <div className="overflow-y-auto p-6">
-                <h2 id="review-photo-lightbox-title" className="text-xl font-bold leading-tight">
+                <h2 id="review-photo-lightbox-title" className="break-words text-xl font-bold leading-tight [overflow-wrap:anywhere]">
                   Photos for {establishment.name}
                 </h2>
                 <p className={`mt-2 text-sm ${dark ? 'text-white/55' : 'text-gray-500'}`}>
@@ -1370,14 +1374,14 @@ export function EstablishmentPage() {
                       </div>
                     );
                   })()}
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <p
-                      className={`font-semibold ${dark ? 'text-[#ffbf3e]' : 'text-[#0073bb]'}`}
+                      className={`break-words font-semibold [overflow-wrap:anywhere] ${dark ? 'text-[#ffbf3e]' : 'text-[#0073bb]'}`}
                     >
                       {getDisplayName(users.find((u) => u.user_id === reviewPhotoLightbox.review.user_id))}
                     </p>
                     {getAffiliation(users.find((u) => u.user_id === reviewPhotoLightbox.review.user_id)) && (
-                      <p className={`text-xs font-semibold ${dark ? 'text-white/70' : 'text-gray-600'}`}>
+                      <p className={`break-words text-xs font-semibold ${dark ? 'text-white/70' : 'text-gray-600'}`}>
                         {getAffiliation(users.find((u) => u.user_id === reviewPhotoLightbox.review.user_id))}
                       </p>
                     )}
@@ -1426,7 +1430,7 @@ export function EstablishmentPage() {
                 dark ? 'border-white/10' : 'border-black/10'
               }`}
             >
-              <h2 id="establishment-gallery-title" className="text-lg font-bold">
+              <h2 id="establishment-gallery-title" className="min-w-0 flex-1 break-words text-lg font-bold [overflow-wrap:anywhere]">
                 Photos · {establishment.name}
               </h2>
               <button

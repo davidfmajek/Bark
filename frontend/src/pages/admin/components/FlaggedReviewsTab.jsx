@@ -99,17 +99,17 @@ export function FlaggedReviewsTab({ dark, verifyPrivileged, onAction }) {
             <div key={r.review_id} className={`rounded-2xl border p-4 ${rowBg}`}>
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
-                  <div className="mb-1 flex items-center gap-2 text-xs">
+                  <div className="mb-1 flex flex-wrap items-center gap-2 text-xs">
                     <Badge color="red">Flagged</Badge>
                     <span className={mutedText}>{formatDateTime(r.created_at)}</span>
-                    <span className={mutedText}>@ {r.establishment?.name ?? 'Unknown'}</span>
+                    <span className={`min-w-0 break-words [overflow-wrap:anywhere] ${mutedText}`}>@ {r.establishment?.name ?? 'Unknown'}</span>
                   </div>
-                  <p className={`line-clamp-3 text-sm ${dark ? 'text-white/85' : 'text-black/80'}`}>{r.body || 'No review text.'}</p>
-                  <p className={`mt-2 text-xs ${mutedText}`}>
+                  <p className={`line-clamp-3 break-words text-sm [overflow-wrap:anywhere] ${dark ? 'text-white/85' : 'text-black/80'}`}>{r.body || 'No review text.'}</p>
+                  <p className={`mt-2 break-words text-xs [overflow-wrap:anywhere] ${mutedText}`}>
                     By {r.author?.display_name || r.author?.email || 'Unknown'} · Rating {r.rating ?? '—'}
                   </p>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex shrink-0 gap-2">
                   <button
                     disabled={!!actionLoading}
                     onClick={() => setConfirm({ action: 'unflag', reviewId: r.review_id })}

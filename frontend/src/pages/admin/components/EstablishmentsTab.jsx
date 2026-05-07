@@ -522,11 +522,11 @@ export function EstablishmentsTab({ dark, verifyPrivileged, onAction }) {
             >
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className={`text-sm font-semibold ${dark ? 'text-white' : 'text-black'}`}>{e.name}</span>
+                  <span className={`break-words text-sm font-semibold [overflow-wrap:anywhere] ${dark ? 'text-white' : 'text-black'}`}>{e.name}</span>
                   <Badge color={e.is_active ? 'green' : 'gray'}>{e.is_active ? 'Active' : 'Hidden'}</Badge>
                   {e.category && <Badge color="gray">{e.category}</Badge>}
                 </div>
-                <p className={`text-xs ${mutedText}`}>
+                <p className={`break-words text-xs [overflow-wrap:anywhere] ${mutedText}`}>
                   {e.building_name || 'No building'} · {(e.reviews ?? []).length} reviews · Avg{' '}
                   {avg((e.reviews ?? []).map((r) => r.rating)).toFixed(1)}
                 </p>

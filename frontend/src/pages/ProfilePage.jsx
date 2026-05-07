@@ -596,8 +596,8 @@ export function ProfilePage() {
               <section className="rounded-2xl border border-dashed border-white/15 bg-black/10 p-5">
                 <h2 className="text-sm font-bold uppercase tracking-wider text-[#f5bf3e]">Profile Photo</h2>
                 <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="flex items-center gap-4">
-                    <span className={`flex h-20 w-20 items-center justify-center overflow-hidden rounded-full border text-lg font-bold ${
+                  <div className="flex min-w-0 items-center gap-4">
+                    <span className={`flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full border text-lg font-bold ${
                       dark ? 'border-white/15 bg-white/10 text-white/90' : 'border-black/15 bg-black/5 text-black/80'
                     }`}>
                       {effectiveAvatar ? (
@@ -606,7 +606,7 @@ export function ProfilePage() {
                         <span>{previewInitials}</span>
                       )}
                     </span>
-                    <div>
+                    <div className="min-w-0">
                       <p className="text-sm font-semibold">Profile picture</p>
                       <p className={`text-xs ${dark ? 'text-white/60' : 'text-black/60'}`}>JPG or PNG, max 5MB</p>
                     </div>
@@ -791,9 +791,9 @@ export function ProfilePage() {
                       <span>{previewInitials}</span>
                     )}
                   </span>
-                  <div>
-                    <p className="text-sm font-semibold">{displayName.trim() || 'Your Name'}</p>
-                    <p className={`text-xs ${dark ? 'text-white/65' : 'text-black/60'}`}>
+                  <div className="min-w-0 flex-1">
+                    <p className="break-words text-sm font-semibold [overflow-wrap:anywhere]">{displayName.trim() || 'Your Name'}</p>
+                    <p className={`break-words text-xs ${dark ? 'text-white/65' : 'text-black/60'}`}>
                       {AFFILIATION_OPTIONS.find((option) => option.value === affiliation)?.label || 'No affiliation selected'}
                     </p>
                   </div>

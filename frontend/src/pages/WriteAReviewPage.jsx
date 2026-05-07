@@ -356,9 +356,9 @@ function ReviewFormStep({
             }}
           >
             <div className="min-w-0">
-              <h1 className="text-xl font-bold leading-tight sm:text-2xl">{establishment?.name}</h1>
+              <h1 className="break-words text-xl font-bold leading-tight [overflow-wrap:anywhere] sm:text-2xl">{establishment?.name}</h1>
               {locationLine ? (
-                <p className={`mt-1 text-sm ${dark ? 'text-white/60' : 'text-black/55'}`}>{locationLine}</p>
+                <p className={`mt-1 break-words text-sm ${dark ? 'text-white/60' : 'text-black/55'}`}>{locationLine}</p>
               ) : null}
             </div>
 
@@ -582,7 +582,7 @@ function ReviewFormStep({
                           {formatReviewDate(row.created_at)}
                         </span>
                       </div>
-                      <p className={`mt-2 line-clamp-4 text-sm leading-relaxed ${dark ? 'text-white/75' : 'text-black/70'}`}>
+                      <p className={`mt-2 line-clamp-4 break-words text-sm leading-relaxed [overflow-wrap:anywhere] ${dark ? 'text-white/75' : 'text-black/70'}`}>
                         {row.body || '—'}
                       </p>
                     </div>
@@ -886,7 +886,7 @@ export function WriteAReviewPage() {
         </>
       )}
 
-      <main className="container mx-auto px-6 py-10 sm:py-12">
+      <main className="container mx-auto px-4 py-8 sm:px-6 sm:py-12">
         {showNotFound ? (
           <div className="mx-auto max-w-lg text-center">
             <h1 className="text-2xl font-bold">Place not found</h1>
