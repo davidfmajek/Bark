@@ -2,7 +2,11 @@ import { useEffect, useState } from 'react';
 import Cropper from 'react-easy-crop';
 import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../lib/supabase';
-import { AFFILIATION_OPTIONS } from '../lib/affiliations.js';
+import {
+  AFFILIATION_OPTIONS,
+  getAffiliationWriteCandidates,
+  toAffiliationOptionValue,
+} from '../lib/affiliations.js';
 import { compressImageFile } from '../lib/imageCompression.js';
 
 const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
@@ -28,6 +32,11 @@ function loadImage(src) {
     image.onerror = reject;
     image.src = src;
   });
+}
+
+function isAffiliationEnumError(error) {
+  const message = String(error?.message || '').toLowerCase();
+  return message.includes('affiliation_enum') || message.includes('invalid input value for enum');
 }
 
 async function buildCroppedFile(imageSrc, croppedAreaPixels, originalFile) {
@@ -152,10 +161,11 @@ export function ProfilePage() {
         setAvatarPath(loadedAvatarPath);
         setAvatarBucket(loadedAvatarBucket);
         setDisplayName(loadedDisplayName);
-        setAffiliation(loadedAffiliation);
+        const normalizedAffiliation = toAffiliationOptionValue(loadedAffiliation);
+        setAffiliation(normalizedAffiliation);
         setInitialProfile({
           displayName: loadedDisplayName,
-          affiliation: loadedAffiliation,
+          affiliation: normalizedAffiliation,
           avatarUrl: loadedAvatarUrl,
           avatarPath: loadedAvatarPath,
           avatarBucket: loadedAvatarBucket,
@@ -325,9 +335,10 @@ export function ProfilePage() {
     setMessage({ type: '', text: '' });
 
     const trimmedName = displayName.trim();
+    const normalizedAffiliation = toAffiliationOptionValue(affiliation);
     const nextErrors = { displayName: '', affiliation: '', photo: '', password: '' };
     if (!trimmedName) nextErrors.displayName = 'Display name is required.';
-    if (!affiliation) nextErrors.affiliation = 'Affiliation is required.';
+    if (!normalizedAffiliation) nextErrors.affiliation = 'Affiliation is required.';
     if (photoAction === 'replace' && photoFile) nextErrors.photo = validateImage(photoFile);
 
     if (password || confirmPassword) {
@@ -384,66 +395,86 @@ export function ProfilePage() {
       }
 
       const lastLogin = new Date().toISOString();
-      const fullProfilePayload = {
-        display_name: trimmedName,
-        affiliation,
-        avatar_url: nextAvatarUrl || null,
-        avatar_path: nextAvatarPath || null,
-        avatar_bucket: nextAvatarBucket || PROFILE_AVATAR_BUCKET,
-        last_login: lastLogin,
-      };
+      const affiliationCandidates = getAffiliationWriteCandidates(normalizedAffiliation);
+      let profileError = null;
+      for (const dbAffiliation of affiliationCandidates) {
+        const fullProfilePayload = {
+          display_name: trimmedName,
+          affiliation: dbAffiliation,
+          avatar_url: nextAvatarUrl || null,
+          avatar_path: nextAvatarPath || null,
+          avatar_bucket: nextAvatarBucket || PROFILE_AVATAR_BUCKET,
+          last_login: lastLogin,
+        };
 
-      let { data: updatedProfileRow, error: profileError } = await supabase
-        .from('users')
-        .update(fullProfilePayload)
-        .eq('user_id', user.id)
-        .select('user_id')
-        .maybeSingle();
-
-      if (profileError && String(profileError.message || '').toLowerCase().includes('avatar_')) {
-        const fallback = await supabase
+        let { data: updatedProfileRow, error: updateError } = await supabase
           .from('users')
-          .update({
-            display_name: trimmedName,
-            affiliation,
-            last_login: lastLogin,
-          })
+          .update(fullProfilePayload)
           .eq('user_id', user.id)
           .select('user_id')
           .maybeSingle();
-        updatedProfileRow = fallback.data;
-        profileError = fallback.error;
-      }
 
-      // If no row was updated, create the profile row so settings persist after reload.
-      if (!profileError && !updatedProfileRow) {
-        const { error: insertProfileError } = await supabase.from('users').insert({
-          user_id: user.id,
-          email: user.email,
-          password_hash: '[Supabase Auth]',
-          display_name: trimmedName,
-          affiliation,
-          avatar_url: nextAvatarUrl || null,
-          avatar_path: nextAvatarPath || null,
-          avatar_bucket: nextAvatarBucket || PROFILE_AVATAR_BUCKET,
-          is_admin: false,
-          created_at: user.created_at || lastLogin,
-          last_login: lastLogin,
-        });
-        profileError = insertProfileError;
+        if (updateError && String(updateError.message || '').toLowerCase().includes('avatar_')) {
+          const fallback = await supabase
+            .from('users')
+            .update({
+              display_name: trimmedName,
+              affiliation: dbAffiliation,
+              last_login: lastLogin,
+            })
+            .eq('user_id', user.id)
+            .select('user_id')
+            .maybeSingle();
+          updatedProfileRow = fallback.data;
+          updateError = fallback.error;
+        }
+
+        // If no row was updated, create the profile row so settings persist after reload.
+        if (!updateError && !updatedProfileRow) {
+          const { error: insertProfileError } = await supabase.from('users').insert({
+            user_id: user.id,
+            email: user.email,
+            password_hash: '[Supabase Auth]',
+            display_name: trimmedName,
+            affiliation: dbAffiliation,
+            avatar_url: nextAvatarUrl || null,
+            avatar_path: nextAvatarPath || null,
+            avatar_bucket: nextAvatarBucket || PROFILE_AVATAR_BUCKET,
+            is_admin: false,
+            created_at: user.created_at || lastLogin,
+            last_login: lastLogin,
+          });
+          updateError = insertProfileError;
+        }
+
+        if (!updateError) {
+          profileError = null;
+          break;
+        }
+        profileError = updateError;
+        if (!isAffiliationEnumError(updateError)) break;
       }
       if (profileError) throw profileError;
 
-      const { error: metadataError } = await supabase.auth.updateUser({
-        data: {
-          display_name: trimmedName,
-          affiliation,
-          avatar_url: nextAvatarUrl || null,
-          avatar_path: nextAvatarPath || null,
-          avatar_bucket: nextAvatarBucket || PROFILE_AVATAR_BUCKET,
-          has_password: hasEmailPassword || Boolean(password),
-        },
-      });
+      let metadataError = null;
+      for (const metadataAffiliation of affiliationCandidates) {
+        const { error } = await supabase.auth.updateUser({
+          data: {
+            display_name: trimmedName,
+            affiliation: metadataAffiliation,
+            avatar_url: nextAvatarUrl || null,
+            avatar_path: nextAvatarPath || null,
+            avatar_bucket: nextAvatarBucket || PROFILE_AVATAR_BUCKET,
+            has_password: hasEmailPassword || Boolean(password),
+          },
+        });
+        if (!error) {
+          metadataError = null;
+          break;
+        }
+        metadataError = error;
+        if (!isAffiliationEnumError(error)) break;
+      }
       if (metadataError) throw metadataError;
 
       setDisplayName(trimmedName);
@@ -452,7 +483,7 @@ export function ProfilePage() {
       setAvatarBucket(nextAvatarBucket);
       setInitialProfile({
         displayName: trimmedName,
-        affiliation,
+        affiliation: normalizedAffiliation,
         avatarUrl: nextAvatarUrl,
         avatarPath: nextAvatarPath,
         avatarBucket: nextAvatarBucket,
