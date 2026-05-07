@@ -247,8 +247,8 @@ export function Header() {
     ? 'absolute left-0 top-full z-50 mt-2 w-[min(44rem,90vw)] max-h-[min(24rem,70vh)] overflow-y-auto rounded-xl border border-white/10 bg-[#161b26] p-3 shadow-xl'
     : 'absolute left-0 top-full z-50 mt-2 w-[min(44rem,90vw)] max-h-[min(24rem,70vh)] overflow-y-auto rounded-xl border border-black/10 bg-white p-3 shadow-lg';
   const restaurantsItemCls = isDark
-    ? 'block rounded-lg px-3 py-2 font-body text-sm font-medium text-white/90 transition-colors hover:bg-white/10'
-    : 'block rounded-lg px-3 py-2 font-body text-sm font-medium text-black transition-colors hover:bg-black/5';
+    ? 'block break-words rounded-lg px-3 py-2 font-body text-sm font-medium text-white/90 transition-colors hover:bg-white/10 [overflow-wrap:anywhere]'
+    : 'block break-words rounded-lg px-3 py-2 font-body text-sm font-medium text-black transition-colors hover:bg-black/5 [overflow-wrap:anywhere]';
   const mobileMenuButtonCls = isDark
     ? 'rounded-full p-2 text-white/85 transition-colors hover:bg-white/10 sm:hidden'
     : 'rounded-full p-2 text-black/80 transition-colors hover:bg-black/5 sm:hidden';
@@ -308,7 +308,7 @@ export function Header() {
               }`}
             >
               {searchMatches.length === 0 ? (
-                <div className={`px-4 py-3 font-body text-sm ${isDark ? 'text-white/60' : 'text-black/60'}`}>
+                <div className={`break-words px-4 py-3 font-body text-sm [overflow-wrap:anywhere] ${isDark ? 'text-white/60' : 'text-black/60'}`}>
                   No restaurants match &quot;{searchQuery.trim()}&quot;
                 </div>
               ) : (
@@ -317,7 +317,7 @@ export function Header() {
                     <li key={e.establishment_id} role="option">
                       <button
                         type="button"
-                        className={`block w-full px-4 py-2.5 text-left font-body text-sm font-medium transition-colors ${
+                        className={`block w-full break-words px-4 py-2.5 text-left font-body text-sm font-medium transition-colors [overflow-wrap:anywhere] ${
                           isDark ? 'text-white/90 hover:bg-white/10' : 'text-black hover:bg-black/5'
                         }`}
                         onClick={() => handleSearchResultSelect(e.establishment_id)}
@@ -417,7 +417,7 @@ export function Header() {
                     <span className={`text-xs font-bold ${isDark ? 'text-white/90' : 'text-black/80'}`}>{initials}</span>
                   )}
                 </span>
-                <span className={`hidden sm:inline ${profileTextCls}`}>{displayName}</span>
+                <span className={`hidden max-w-[10rem] truncate sm:inline ${profileTextCls}`}>{displayName}</span>
                 <ChevronDownIcon className={`h-4 w-4 shrink-0 transition-transform ${profileOpen ? 'rotate-180' : ''} ${isDark ? 'text-white/70' : 'text-black/60'}`} />
               </button>
               {profileOpen && (

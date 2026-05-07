@@ -2,7 +2,12 @@ import { useEffect, useState } from 'react';
 import Cropper from 'react-easy-crop';
 import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../lib/supabase';
-import { AFFILIATION_OPTIONS } from '../lib/affiliations.js';
+import {
+  AFFILIATION_OPTIONS,
+  getAffiliationWriteCandidates,
+  toAffiliationOptionValue,
+} from '../lib/affiliations.js';
+import { compressImageFile } from '../lib/imageCompression.js';
 
 const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png'];
@@ -27,6 +32,11 @@ function loadImage(src) {
     image.onerror = reject;
     image.src = src;
   });
+}
+
+function isAffiliationEnumError(error) {
+  const message = String(error?.message || '').toLowerCase();
+  return message.includes('affiliation_enum') || message.includes('invalid input value for enum');
 }
 
 async function buildCroppedFile(imageSrc, croppedAreaPixels, originalFile) {
@@ -151,10 +161,11 @@ export function ProfilePage() {
         setAvatarPath(loadedAvatarPath);
         setAvatarBucket(loadedAvatarBucket);
         setDisplayName(loadedDisplayName);
-        setAffiliation(loadedAffiliation);
+        const normalizedAffiliation = toAffiliationOptionValue(loadedAffiliation);
+        setAffiliation(normalizedAffiliation);
         setInitialProfile({
           displayName: loadedDisplayName,
-          affiliation: loadedAffiliation,
+          affiliation: normalizedAffiliation,
           avatarUrl: loadedAvatarUrl,
           avatarPath: loadedAvatarPath,
           avatarBucket: loadedAvatarBucket,
@@ -189,29 +200,59 @@ export function ProfilePage() {
 
   const canSave = !loading && !saving && isDirty;
 
-  function validateImage(file) {
+  function validateImageType(file) {
     if (!file) return '';
     if (!ALLOWED_IMAGE_TYPES.includes(file.type)) return 'Image must be JPG or PNG.';
+    return '';
+  }
+
+  function validateImage(file) {
+    const typeErr = validateImageType(file);
+    if (typeErr) return typeErr;
     if (file.size > MAX_IMAGE_SIZE_BYTES) return 'Image must be 5MB or smaller.';
     return '';
   }
 
-  function handlePhotoChange(event) {
+  async function handlePhotoChange(event) {
     const file = event.target.files?.[0];
     event.target.value = '';
     setMessage({ type: '', text: '' });
     if (!file) return;
-    const errorMessage = validateImage(file);
-    if (errorMessage) {
+    const typeError = validateImageType(file);
+    if (typeError) {
       setPhotoFile(null);
       setPhotoAction('keep');
-      setFieldErrors((prev) => ({ ...prev, photo: errorMessage }));
+      setFieldErrors((prev) => ({ ...prev, photo: typeError }));
+      return;
+    }
+    let working = file;
+    if (file.size > MAX_IMAGE_SIZE_BYTES) {
+      try {
+        working = await compressImageFile(file, {
+          maxBytes: MAX_IMAGE_SIZE_BYTES,
+          preservePng: true,
+        });
+      } catch (err) {
+        setPhotoFile(null);
+        setPhotoAction('keep');
+        setFieldErrors((prev) => ({
+          ...prev,
+          photo: err?.message || 'Unable to shrink that image. Try another file.',
+        }));
+        return;
+      }
+    }
+    const sizeError = validateImage(working);
+    if (sizeError) {
+      setPhotoFile(null);
+      setPhotoAction('keep');
+      setFieldErrors((prev) => ({ ...prev, photo: sizeError }));
       return;
     }
     const reader = new FileReader();
     reader.onload = () => {
       setCropImageSrc(String(reader.result || ''));
-      setCropSourceFile(file);
+      setCropSourceFile(working);
       setCropPosition({ x: 0, y: 0 });
       setCropZoom(1);
       setCropPixels(null);
@@ -221,7 +262,7 @@ export function ProfilePage() {
     reader.onerror = () => {
       setFieldErrors((prev) => ({ ...prev, photo: 'Unable to preview selected image.' }));
     };
-    reader.readAsDataURL(file);
+    reader.readAsDataURL(working);
   }
 
   function handleRemovePhoto() {
@@ -266,7 +307,13 @@ export function ProfilePage() {
     if (!cropImageSrc || !cropPixels || !cropSourceFile) return;
     setCropProcessing(true);
     try {
-      const croppedFile = await buildCroppedFile(cropImageSrc, cropPixels, cropSourceFile);
+      let croppedFile = await buildCroppedFile(cropImageSrc, cropPixels, cropSourceFile);
+      if (croppedFile.size > MAX_IMAGE_SIZE_BYTES) {
+        croppedFile = await compressImageFile(croppedFile, {
+          maxBytes: MAX_IMAGE_SIZE_BYTES,
+          preservePng: true,
+        });
+      }
       const errorMessage = validateImage(croppedFile);
       if (errorMessage) {
         setFieldErrors((prev) => ({ ...prev, photo: errorMessage }));
@@ -288,9 +335,10 @@ export function ProfilePage() {
     setMessage({ type: '', text: '' });
 
     const trimmedName = displayName.trim();
+    const normalizedAffiliation = toAffiliationOptionValue(affiliation);
     const nextErrors = { displayName: '', affiliation: '', photo: '', password: '' };
     if (!trimmedName) nextErrors.displayName = 'Display name is required.';
-    if (!affiliation) nextErrors.affiliation = 'Affiliation is required.';
+    if (!normalizedAffiliation) nextErrors.affiliation = 'Affiliation is required.';
     if (photoAction === 'replace' && photoFile) nextErrors.photo = validateImage(photoFile);
 
     if (password || confirmPassword) {
@@ -347,66 +395,86 @@ export function ProfilePage() {
       }
 
       const lastLogin = new Date().toISOString();
-      const fullProfilePayload = {
-        display_name: trimmedName,
-        affiliation,
-        avatar_url: nextAvatarUrl || null,
-        avatar_path: nextAvatarPath || null,
-        avatar_bucket: nextAvatarBucket || PROFILE_AVATAR_BUCKET,
-        last_login: lastLogin,
-      };
+      const affiliationCandidates = getAffiliationWriteCandidates(normalizedAffiliation);
+      let profileError = null;
+      for (const dbAffiliation of affiliationCandidates) {
+        const fullProfilePayload = {
+          display_name: trimmedName,
+          affiliation: dbAffiliation,
+          avatar_url: nextAvatarUrl || null,
+          avatar_path: nextAvatarPath || null,
+          avatar_bucket: nextAvatarBucket || PROFILE_AVATAR_BUCKET,
+          last_login: lastLogin,
+        };
 
-      let { data: updatedProfileRow, error: profileError } = await supabase
-        .from('users')
-        .update(fullProfilePayload)
-        .eq('user_id', user.id)
-        .select('user_id')
-        .maybeSingle();
-
-      if (profileError && String(profileError.message || '').toLowerCase().includes('avatar_')) {
-        const fallback = await supabase
+        let { data: updatedProfileRow, error: updateError } = await supabase
           .from('users')
-          .update({
-            display_name: trimmedName,
-            affiliation,
-            last_login: lastLogin,
-          })
+          .update(fullProfilePayload)
           .eq('user_id', user.id)
           .select('user_id')
           .maybeSingle();
-        updatedProfileRow = fallback.data;
-        profileError = fallback.error;
-      }
 
-      // If no row was updated, create the profile row so settings persist after reload.
-      if (!profileError && !updatedProfileRow) {
-        const { error: insertProfileError } = await supabase.from('users').insert({
-          user_id: user.id,
-          email: user.email,
-          password_hash: '[Supabase Auth]',
-          display_name: trimmedName,
-          affiliation,
-          avatar_url: nextAvatarUrl || null,
-          avatar_path: nextAvatarPath || null,
-          avatar_bucket: nextAvatarBucket || PROFILE_AVATAR_BUCKET,
-          is_admin: false,
-          created_at: user.created_at || lastLogin,
-          last_login: lastLogin,
-        });
-        profileError = insertProfileError;
+        if (updateError && String(updateError.message || '').toLowerCase().includes('avatar_')) {
+          const fallback = await supabase
+            .from('users')
+            .update({
+              display_name: trimmedName,
+              affiliation: dbAffiliation,
+              last_login: lastLogin,
+            })
+            .eq('user_id', user.id)
+            .select('user_id')
+            .maybeSingle();
+          updatedProfileRow = fallback.data;
+          updateError = fallback.error;
+        }
+
+        // If no row was updated, create the profile row so settings persist after reload.
+        if (!updateError && !updatedProfileRow) {
+          const { error: insertProfileError } = await supabase.from('users').insert({
+            user_id: user.id,
+            email: user.email,
+            password_hash: '[Supabase Auth]',
+            display_name: trimmedName,
+            affiliation: dbAffiliation,
+            avatar_url: nextAvatarUrl || null,
+            avatar_path: nextAvatarPath || null,
+            avatar_bucket: nextAvatarBucket || PROFILE_AVATAR_BUCKET,
+            is_admin: false,
+            created_at: user.created_at || lastLogin,
+            last_login: lastLogin,
+          });
+          updateError = insertProfileError;
+        }
+
+        if (!updateError) {
+          profileError = null;
+          break;
+        }
+        profileError = updateError;
+        if (!isAffiliationEnumError(updateError)) break;
       }
       if (profileError) throw profileError;
 
-      const { error: metadataError } = await supabase.auth.updateUser({
-        data: {
-          display_name: trimmedName,
-          affiliation,
-          avatar_url: nextAvatarUrl || null,
-          avatar_path: nextAvatarPath || null,
-          avatar_bucket: nextAvatarBucket || PROFILE_AVATAR_BUCKET,
-          has_password: hasEmailPassword || Boolean(password),
-        },
-      });
+      let metadataError = null;
+      for (const metadataAffiliation of affiliationCandidates) {
+        const { error } = await supabase.auth.updateUser({
+          data: {
+            display_name: trimmedName,
+            affiliation: metadataAffiliation,
+            avatar_url: nextAvatarUrl || null,
+            avatar_path: nextAvatarPath || null,
+            avatar_bucket: nextAvatarBucket || PROFILE_AVATAR_BUCKET,
+            has_password: hasEmailPassword || Boolean(password),
+          },
+        });
+        if (!error) {
+          metadataError = null;
+          break;
+        }
+        metadataError = error;
+        if (!isAffiliationEnumError(error)) break;
+      }
       if (metadataError) throw metadataError;
 
       setDisplayName(trimmedName);
@@ -415,7 +483,7 @@ export function ProfilePage() {
       setAvatarBucket(nextAvatarBucket);
       setInitialProfile({
         displayName: trimmedName,
-        affiliation,
+        affiliation: normalizedAffiliation,
         avatarUrl: nextAvatarUrl,
         avatarPath: nextAvatarPath,
         avatarBucket: nextAvatarBucket,
@@ -528,8 +596,8 @@ export function ProfilePage() {
               <section className="rounded-2xl border border-dashed border-white/15 bg-black/10 p-5">
                 <h2 className="text-sm font-bold uppercase tracking-wider text-[#f5bf3e]">Profile Photo</h2>
                 <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="flex items-center gap-4">
-                    <span className={`flex h-20 w-20 items-center justify-center overflow-hidden rounded-full border text-lg font-bold ${
+                  <div className="flex min-w-0 items-center gap-4">
+                    <span className={`flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full border text-lg font-bold ${
                       dark ? 'border-white/15 bg-white/10 text-white/90' : 'border-black/15 bg-black/5 text-black/80'
                     }`}>
                       {effectiveAvatar ? (
@@ -538,7 +606,7 @@ export function ProfilePage() {
                         <span>{previewInitials}</span>
                       )}
                     </span>
-                    <div>
+                    <div className="min-w-0">
                       <p className="text-sm font-semibold">Profile picture</p>
                       <p className={`text-xs ${dark ? 'text-white/60' : 'text-black/60'}`}>JPG or PNG, max 5MB</p>
                     </div>
@@ -723,9 +791,9 @@ export function ProfilePage() {
                       <span>{previewInitials}</span>
                     )}
                   </span>
-                  <div>
-                    <p className="text-sm font-semibold">{displayName.trim() || 'Your Name'}</p>
-                    <p className={`text-xs ${dark ? 'text-white/65' : 'text-black/60'}`}>
+                  <div className="min-w-0 flex-1">
+                    <p className="break-words text-sm font-semibold [overflow-wrap:anywhere]">{displayName.trim() || 'Your Name'}</p>
+                    <p className={`break-words text-xs ${dark ? 'text-white/65' : 'text-black/60'}`}>
                       {AFFILIATION_OPTIONS.find((option) => option.value === affiliation)?.label || 'No affiliation selected'}
                     </p>
                   </div>

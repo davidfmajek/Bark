@@ -322,14 +322,14 @@ export function MyReviewsPage() {
         <div className="absolute inset-0 opacity-30 [background-image:radial-gradient(rgba(0,0,0,0.04)_1px,transparent_1px)] [background-size:18px_18px]" />
       )}
 
-      <main className="relative z-10 container mx-auto px-6 py-12">
+      <main className="container relative z-10 mx-auto px-4 py-8 sm:px-6 sm:py-12">
         <div className="mx-auto max-w-4xl">
-          <h1 className="text-4xl font-black tracking-tight">My Reviews</h1>
+          <h1 className="text-3xl font-black tracking-tight sm:text-4xl">My Reviews</h1>
           <p className={`mt-2 text-sm ${dark ? 'text-white/65' : 'text-black/60'}`}>
             Your past ratings and written feedback for campus spots.
           </p>
 
-          <section className="mt-8">
+          <section className="mt-6 sm:mt-8">
             {loading ? (
               <p className={`${dark ? 'text-white/70' : 'text-black/70'}`}>Loading your reviews...</p>
             ) : reviews.length === 0 ? (
@@ -367,12 +367,12 @@ export function MyReviewsPage() {
                   const meetsMinReviewChars = draftCharCount >= MIN_REVIEW_CHARS;
                   const photos = reviewPhotosByReviewId[String(review.review_id)] ?? [];
                   return (
-                    <article key={review.review_id} className="py-5">
+                    <article key={review.review_id} className="min-w-0 py-5">
                       <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                          <h2 className="text-lg font-bold">{review.establishmentName}</h2>
+                        <div className="min-w-0 flex-1">
+                          <h2 className="break-words text-lg font-bold">{review.establishmentName}</h2>
                           {review.establishmentBuilding ? (
-                            <p className={`text-sm ${dark ? 'text-white/55' : 'text-black/55'}`}>
+                            <p className={`break-words text-sm ${dark ? 'text-white/55' : 'text-black/55'}`}>
                               {review.establishmentBuilding}
                             </p>
                           ) : null}
@@ -478,7 +478,7 @@ export function MyReviewsPage() {
                         </div>
                       ) : (
                         <>
-                          <p className={`mt-3 leading-relaxed ${dark ? 'text-white/85' : 'text-black/80'}`}>
+                          <p className={`mt-3 whitespace-pre-wrap break-words leading-relaxed [overflow-wrap:anywhere] ${dark ? 'text-white/85' : 'text-black/80'}`}>
                             {review.body || 'No review text provided.'}
                           </p>
                           <div className="mt-3">

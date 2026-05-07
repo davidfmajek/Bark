@@ -129,18 +129,18 @@ export function ReportsTab({ dark, verifyPrivileged, onAction }) {
                     {statusBadge(r.status)}
                     <span className={`text-xs ${mutedText}`}>{formatDate(r.reported_at)}</span>
                     {r.review?.establishment?.name && (
-                      <span className={`text-xs font-medium ${dark ? 'text-[#f5bf3e]/70' : 'text-[#D4A017]'}`}>@ {r.review.establishment.name}</span>
+                      <span className={`min-w-0 break-words text-xs font-medium [overflow-wrap:anywhere] ${dark ? 'text-[#f5bf3e]/70' : 'text-[#D4A017]'}`}>@ {r.review.establishment.name}</span>
                     )}
                   </div>
-                  <p className={`mt-2 text-sm ${dark ? 'text-white/80' : 'text-black/80'}`}>
+                  <p className={`mt-2 break-words text-sm [overflow-wrap:anywhere] ${dark ? 'text-white/80' : 'text-black/80'}`}>
                     <span className="font-semibold">Reason:</span> {r.reason}
                   </p>
                   {r.review?.body && (
-                    <p className={`mt-1.5 line-clamp-3 rounded-xl p-3 text-sm italic ${dark ? 'bg-white/4 text-white/60' : 'bg-black/3 text-black/55'}`}>
+                    <p className={`mt-1.5 line-clamp-3 break-words rounded-xl p-3 text-sm italic [overflow-wrap:anywhere] ${dark ? 'bg-white/4 text-white/60' : 'bg-black/3 text-black/55'}`}>
                       "{r.review.body}"
                     </p>
                   )}
-                  <div className={`mt-2 flex gap-4 text-xs ${mutedText}`}>
+                  <div className={`mt-2 flex flex-wrap gap-x-4 gap-y-1 break-words text-xs [overflow-wrap:anywhere] ${mutedText}`}>
                     <span>Reported by: <span className={dark ? 'text-white/65' : 'text-black/65'}>{r.reviewer?.display_name ?? r.reviewer?.email ?? '—'}</span></span>
                     <span>Review by: <span className={dark ? 'text-white/65' : 'text-black/65'}>{r.review?.author?.display_name ?? r.review?.author?.email ?? '—'}</span></span>
                   </div>

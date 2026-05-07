@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Eye, EyeOff, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
+import { compressImageFile } from '../../../lib/imageCompression.js';
 import { LIST_MAX_HEIGHT_CLASS, avg, getScrollbarClass, simpleError } from '../utils';
 import { Badge, ConfirmModal, ModalShell, TypeToConfirmModal } from './Common';
 
@@ -77,19 +78,29 @@ function storageUrlWithCacheBust(url, bust) {
 }
 
 const BRAND_IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'webp'];
+const BRAND_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 
 async function uploadBrandImage(establishmentId, file, role) {
   const label = role === 'logo' ? 'Logo' : 'Hero';
   if (!file || !file.size) {
     throw new Error(`${label}: choose a non-empty image file.`);
   }
-  const rawExt = file.name.split('.').pop()?.toLowerCase() || 'png';
+  let uploadFile = file;
+  try {
+    uploadFile = await compressImageFile(file, {
+      maxBytes: BRAND_IMAGE_MAX_BYTES,
+      preservePng: true,
+    });
+  } catch (err) {
+    throw new Error(`${label}: ${err?.message || 'Could not process image.'}`);
+  }
+  const rawExt = uploadFile.name.split('.').pop()?.toLowerCase() || 'png';
   const ext = BRAND_IMAGE_EXTENSIONS.includes(rawExt) ? rawExt : 'png';
   const folder = role === 'logo' ? 'logos' : 'heroes';
   const path = `${folder}/${establishmentId}.${ext}`;
-  const { error } = await supabase.storage.from(STORAGE_BUCKET).upload(path, file, {
+  const { error } = await supabase.storage.from(STORAGE_BUCKET).upload(path, uploadFile, {
     upsert: true,
-    contentType: file.type || `image/${ext === 'jpg' ? 'jpeg' : ext}`,
+    contentType: uploadFile.type || `image/${ext === 'jpg' ? 'jpeg' : ext}`,
   });
   if (error) {
     const msg = error.message || String(error);
@@ -511,11 +522,11 @@ export function EstablishmentsTab({ dark, verifyPrivileged, onAction }) {
             >
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className={`text-sm font-semibold ${dark ? 'text-white' : 'text-black'}`}>{e.name}</span>
+                  <span className={`break-words text-sm font-semibold [overflow-wrap:anywhere] ${dark ? 'text-white' : 'text-black'}`}>{e.name}</span>
                   <Badge color={e.is_active ? 'green' : 'gray'}>{e.is_active ? 'Active' : 'Hidden'}</Badge>
                   {e.category && <Badge color="gray">{e.category}</Badge>}
                 </div>
-                <p className={`text-xs ${mutedText}`}>
+                <p className={`break-words text-xs [overflow-wrap:anywhere] ${mutedText}`}>
                   {e.building_name || 'No building'} · {(e.reviews ?? []).length} reviews · Avg{' '}
                   {avg((e.reviews ?? []).map((r) => r.rating)).toFixed(1)}
                 </p>

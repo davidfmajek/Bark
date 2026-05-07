@@ -12,7 +12,7 @@ export function ActivityFeed({ dark, activity, mutedText }) {
         ) : (
           activity.map((item) => (
             <div key={item.id} className={`rounded-xl border p-3 ${dark ? 'border-white/10 bg-white/5' : 'border-black/10 bg-black/5'}`}>
-              <p className="text-xs font-medium">{item.label}</p>
+              <p className="break-words text-xs font-medium [overflow-wrap:anywhere]">{item.label}</p>
               <p className={`mt-1 text-[11px] ${mutedText}`}>{formatDateTime(item.ts)}</p>
             </div>
           ))
