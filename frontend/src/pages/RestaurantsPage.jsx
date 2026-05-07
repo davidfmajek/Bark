@@ -229,42 +229,42 @@ useEffect(() => {
                       </div>
                     </Link>
 
-                    {/* Card body — meta + actions on a normal background so contrast is always good */}
-                    <div className={`flex flex-col gap-4 p-4 sm:p-6 md:flex-row md:items-center md:justify-between md:gap-6 ${dark ? 'text-white' : 'text-black'}`}>
+                    {/* Card body — meta + actions stack vertically so the 2-col grid stays readable */}
+                    <div className={`flex flex-col gap-4 p-4 sm:p-6 ${dark ? 'text-white' : 'text-black'}`}>
                       <Link
                         to={`/restaurants/${restaurant.establishment_id}`}
-                        className={`-m-2 flex min-w-0 flex-wrap gap-x-5 gap-y-2 rounded-xl p-2 text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#ffbf3e] ${
+                        className={`-mx-2 flex min-w-0 flex-wrap gap-x-5 gap-y-2 rounded-xl px-2 py-1 text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#ffbf3e] ${
                           dark ? 'hover:bg-white/5' : 'hover:bg-black/[0.04]'
                         }`}
                         aria-label={`Open ${restaurant.name}`}
                       >
-                        <div className="flex items-center gap-2">
+                        <div className="flex min-w-0 items-center gap-2">
                           <Clock className="h-4 w-4 shrink-0 text-[#ffbf3e]" />
                           <span
-                            className={
+                            className={`whitespace-nowrap ${
                               getBusinessStatus(restaurant) === 'Closed'
                                 ? 'font-bold text-red-500'
                                 : dark
                                   ? 'text-white/85'
                                   : 'text-black/80'
-                            }
+                            }`}
                           >
                             {getBusinessStatus(restaurant)}
                           </span>
                         </div>
                         <div className="flex min-w-0 items-center gap-2">
                           <MapPin className="h-4 w-4 shrink-0 text-[#ffbf3e]" />
-                          <span className={`line-clamp-1 ${dark ? 'text-white/85' : 'text-black/80'}`}>
+                          <span className={`truncate ${dark ? 'text-white/85' : 'text-black/80'}`}>
                             {restaurant.building_name || restaurant.address}
                           </span>
                         </div>
                       </Link>
 
-                      <div className="flex flex-col gap-2 sm:flex-row sm:gap-3 md:shrink-0 md:flex-col md:gap-2 lg:flex-row lg:gap-3">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:gap-3">
                         {isAuthenticated && (
                           <Link
                             to={`/restaurants/${restaurant.establishment_id}/writeareview`}
-                            className="inline-flex w-full items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-[#ffbf3e] px-4 py-2.5 text-sm font-bold text-black transition-all hover:scale-[1.02] hover:bg-[#ffd15e] active:scale-95 sm:w-auto sm:px-5"
+                            className="inline-flex flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-[#ffbf3e] px-4 py-2.5 text-sm font-bold text-black transition-all hover:scale-[1.02] hover:bg-[#ffd15e] active:scale-95 sm:px-5"
                           >
                             Write a Review
                             <FilePenLine className="h-4 w-4" />
@@ -272,7 +272,7 @@ useEffect(() => {
                         )}
                         <Link
                           to={`/restaurants/${restaurant.establishment_id}`}
-                          className={`inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition-all hover:scale-[1.02] active:scale-95 sm:w-auto sm:px-5 ${
+                          className={`inline-flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition-all hover:scale-[1.02] active:scale-95 sm:px-5 ${
                             dark
                               ? 'border border-white/15 bg-white/5 text-white hover:bg-white/10'
                               : 'border border-black/10 bg-black text-white hover:bg-black/85'
