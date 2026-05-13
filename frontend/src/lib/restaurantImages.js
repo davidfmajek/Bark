@@ -6,7 +6,6 @@ const HEROES_FOLDER = 'heroes';
 const LOGOS_FOLDER = 'logos';
 const IMAGES_FOLDER = 'images';
 
-/** Bucket may use flat keys (`logos/id.ext`) or nested keys (`logos/logos/id.ext`, `logos/heroes/id.ext`) per Supabase folder layout. */
 function brandSlotPathPrefixes(folder) {
   const f = String(folder ?? '').trim();
   if (f === LOGOS_FOLDER) return [`${LOGOS_FOLDER}`, `${LOGOS_FOLDER}/${LOGOS_FOLDER}`];
@@ -131,8 +130,7 @@ function getConventionalCandidatePathsById(id) {
   return [...new Set(paths)];
 }
 
-// Logos before heroes so a single brand slot in the collage tends to show the logo.
-// Treat `logos/logos/` and `logos/heroes/` as logo vs hero slots (not generic `logos/*`).
+// Logos before heroes for collage ordering.
 function orderedBrandCandidatePathsForId(establishmentId) {
   const all = getConventionalCandidatePathsById(establishmentId);
   const nestedLogo = (p) => p.startsWith(`${LOGOS_FOLDER}/${LOGOS_FOLDER}/`);
@@ -198,19 +196,19 @@ export function getRestaurantCardImageCandidates(restaurant, supabase = null) {
   return deduped.flatMap((candidate) => getPathOrUrlCandidateUrls(supabase, candidate));
 }
 
-/**
- * First card image URL that returns an image (bounded probes; avoids broken `<img>` on grids).
- * @returns {Promise<string>} Public image URL or empty string.
- */
 export async function resolveRestaurantCardImageUrl(supabase, restaurant) {
   if (!supabase?.storage || !STORAGE_BUCKET || !SUPABASE_URL) return '';
 
-  const brandSlots = await fetchEstablishmentGalleryUrls(supabase, restaurant);
-  if (brandSlots.length > 0) return brandSlots[0];
+  try {
+    const brandSlots = await fetchEstablishmentGalleryUrls(supabase, restaurant);
+    if (brandSlots.length > 0) return brandSlots[0];
 
-  const candidates = getRestaurantCardImageCandidates(restaurant, supabase);
-  const probed = await probePublicImageUrlsInOrder(candidates, 1);
-  return probed[0] ?? '';
+    const candidates = getRestaurantCardImageCandidates(restaurant, supabase);
+    const probed = await probePublicImageUrlsInOrder(candidates, 1);
+    return probed[0] ?? '';
+  } catch {
+    return '';
+  }
 }
 
 // First candidate URL only — often 404. Use fetchCarouselSlidesFromStorage.
@@ -226,9 +224,9 @@ export function getRestaurantCarouselSlides(restaurants = []) {
   });
 }
 
-const PROBE_FETCH_TIMEOUT_MS = 10_000;
+const PROBE_FETCH_TIMEOUT_MS = 4_000;
 /** Avoid opening dozens of simultaneous connections to Storage / CDNs. */
-const PROBE_MAX_CONCURRENT = 8;
+const PROBE_MAX_CONCURRENT = 10;
 
 function isImageContentType(headerValue) {
   return /^image\//i.test(String(headerValue ?? '').trim());
@@ -329,7 +327,7 @@ async function probePublicImageUrl(url) {
     return responseLooksLikeImage(res);
   } catch (err) {
     if (import.meta.env.DEV && err?.name !== 'AbortError') {
-      console.warn('[restaurantImages] probePublicImageUrl:', url.slice(0, 120), err);
+      console.warn('[restaurantImages] probePublicImageUrl:', String(url ?? '').slice(0, 120), err);
     }
     return false;
   } finally {
@@ -381,38 +379,40 @@ async function probePublicImageUrlsInOrder(urls, max) {
 
 export const MAX_HOME_CAROUSEL_SLIDES = 24; // home carousel slide limit
 
-/** How many establishments to resolve in parallel for the home carousel (each does several probes). */
-const CAROUSEL_RESOLVE_CONCURRENCY = 5;
+const CAROUSEL_RESOLVE_CONCURRENCY = 8;
 
-// One slide per place: primary image is logo, else hero; bounded parallelism for production loads.
 export async function fetchCarouselSlidesFromStorage(supabase, establishments) {
   if (!supabase?.storage || !STORAGE_BUCKET || !SUPABASE_URL || !Array.isArray(establishments) || establishments.length === 0) {
     return [];
   }
 
-  const list = establishments.filter((e) => String(e?.establishment_id ?? '').trim());
-  if (list.length === 0) return [];
+  try {
+    const list = establishments.filter((e) => String(e?.establishment_id ?? '').trim());
+    if (list.length === 0) return [];
 
-  const maxScan = Math.min(list.length, MAX_HOME_CAROUSEL_SLIDES * 4);
-  const toScan = list.slice(0, maxScan);
-  const resolved = new Array(toScan.length);
+    const maxScan = Math.min(list.length, MAX_HOME_CAROUSEL_SLIDES * 4);
+    const toScan = list.slice(0, maxScan);
+    const resolved = new Array(toScan.length);
 
-  await runWithConcurrency(toScan, CAROUSEL_RESOLVE_CONCURRENCY, async (e, i) => {
-    const id = String(e.establishment_id).trim();
-    const urls = await fetchEstablishmentGalleryUrls(supabase, e);
-    if (urls.length === 0) {
-      resolved[i] = null;
-      return;
-    }
-    const rawName = e?.name != null ? String(e.name) : '';
-    resolved[i] = {
-      key: id,
-      imageSrc: urls[0],
-      alt: rawName ? rawName.slice(0, 200) : 'Restaurant photo',
-    };
-  });
+    await runWithConcurrency(toScan, CAROUSEL_RESOLVE_CONCURRENCY, async (e, i) => {
+      const id = String(e.establishment_id).trim();
+      const urls = await fetchEstablishmentGalleryUrls(supabase, e);
+      if (urls.length === 0) {
+        resolved[i] = null;
+        return;
+      }
+      const rawName = e?.name != null ? String(e.name) : '';
+      resolved[i] = {
+        key: id,
+        imageSrc: urls[0],
+        alt: rawName ? rawName.slice(0, 200) : 'Restaurant photo',
+      };
+    });
 
-  return resolved.filter(Boolean).slice(0, MAX_HOME_CAROUSEL_SLIDES);
+    return resolved.filter(Boolean).slice(0, MAX_HOME_CAROUSEL_SLIDES);
+  } catch {
+    return [];
+  }
 }
 
 
@@ -443,43 +443,94 @@ function mergeBrandThenReviewUrls(brandUrls, reviewUrls, max) {
 
 const BRAND_SLOT_EXTENSIONS = ['png', 'jpg', 'jpeg', 'webp'];
 
-/** First public URL for a brand slot (logo or hero) that returns an image — tries flat then nested paths. */
-async function resolveExistingBrandSlotUrl(supabase, folder, establishmentId) {
+const GALLERY_SESSION_CACHE_PREFIX = 'bark:estGallery:';
+const GALLERY_SESSION_CACHE_TTL_MS = 60 * 60 * 1000;
+const MAX_CACHED_GALLERY_URLS = 12;
+
+function validateCachedGalleryUrls(urls) {
+  if (!Array.isArray(urls) || urls.length === 0 || urls.length > MAX_CACHED_GALLERY_URLS) return false;
+  return urls.every(
+    (u) =>
+      typeof u === 'string' &&
+      u.length > 0 &&
+      u.length <= 2048 &&
+      isTrustedSupabaseStorageHttpUrl(u),
+  );
+}
+
+function readGallerySessionCache(establishmentId) {
+  if (typeof sessionStorage === 'undefined') return null;
+  try {
+    const raw = sessionStorage.getItem(GALLERY_SESSION_CACHE_PREFIX + String(establishmentId));
+    if (!raw) return null;
+    const { urls, t } = JSON.parse(raw);
+    if (!validateCachedGalleryUrls(urls) || typeof t !== 'number') return null;
+    if (Date.now() - t > GALLERY_SESSION_CACHE_TTL_MS) return null;
+    return urls;
+  } catch {
+    return null;
+  }
+}
+
+function writeGallerySessionCache(establishmentId, urls) {
+  if (typeof sessionStorage === 'undefined' || !validateCachedGalleryUrls(urls)) return;
+  try {
+    sessionStorage.setItem(
+      GALLERY_SESSION_CACHE_PREFIX + String(establishmentId),
+      JSON.stringify({ urls, t: Date.now() }),
+    );
+  } catch {}
+}
+
+function getBrandSlotCandidatePublicUrls(supabase, folder, establishmentId) {
   const id = String(establishmentId ?? '').trim();
-  if (!id || !supabase?.storage || !STORAGE_BUCKET || !SUPABASE_URL) return null;
+  if (!id || !supabase?.storage || !STORAGE_BUCKET) return [];
+  const urls = [];
   for (const prefix of brandSlotPathPrefixes(folder)) {
     for (const ext of BRAND_SLOT_EXTENSIONS) {
       const path = `${prefix}/${id}.${ext}`;
       const { data } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(path);
-      const url = data?.publicUrl;
-      if (url && (await probePublicImageUrl(url))) return url;
+      if (data?.publicUrl) urls.push(data.publicUrl);
     }
   }
-  return null;
+  return urls;
 }
 
-/**
- * Public logo/hero URLs for carousel and cards. Order is always **logo first, then hero** when both exist;
- * callers should use `urls[0]` for a single “primary” image (logo, or hero if no logo).
- * @returns {Promise<string[]>} Empty if `VITE_SUPABASE_*` / client is not configured or establishment has no id.
- */
+async function resolveExistingBrandSlotUrl(supabase, folder, establishmentId) {
+  const id = String(establishmentId ?? '').trim();
+  if (!id || !supabase?.storage || !STORAGE_BUCKET || !SUPABASE_URL) return null;
+  const candidates = getBrandSlotCandidatePublicUrls(supabase, folder, id);
+  if (candidates.length === 0) return null;
+  const hits = await probePublicImageUrlsInOrder(candidates, 1);
+  return hits[0] ?? null;
+}
+
 export async function fetchEstablishmentGalleryUrls(supabase, establishment) {
   if (!supabase?.storage || !STORAGE_BUCKET || !SUPABASE_URL) return [];
   const id = establishment?.establishment_id;
   if (id == null || String(id).trim() === '') return [];
 
-  const [logoUrl, heroUrl] = await Promise.all([
-    resolveExistingBrandSlotUrl(supabase, LOGOS_FOLDER, id),
-    resolveExistingBrandSlotUrl(supabase, HEROES_FOLDER, id),
-  ]);
+  const sid = String(id).trim();
+  const cached = readGallerySessionCache(sid);
+  if (cached) return cached;
 
-  const urls = [];
-  if (logoUrl && heroUrl) {
-    urls.push(logoUrl, heroUrl, logoUrl);
-  } else if (logoUrl && !heroUrl) {
-    urls.push(logoUrl, logoUrl, logoUrl);
-  } else if (heroUrl && !logoUrl) {
-    urls.push(heroUrl, heroUrl, heroUrl);
+  try {
+    const [logoUrl, heroUrl] = await Promise.all([
+      resolveExistingBrandSlotUrl(supabase, LOGOS_FOLDER, sid),
+      resolveExistingBrandSlotUrl(supabase, HEROES_FOLDER, sid),
+    ]);
+
+    const urls = [];
+    if (logoUrl && heroUrl) {
+      urls.push(logoUrl, heroUrl, logoUrl);
+    } else if (logoUrl && !heroUrl) {
+      urls.push(logoUrl, logoUrl, logoUrl);
+    } else if (heroUrl && !logoUrl) {
+      urls.push(heroUrl, heroUrl, heroUrl);
+    }
+    writeGallerySessionCache(sid, urls);
+    return urls;
+  } catch {
+    return [];
   }
-  return urls;
 }

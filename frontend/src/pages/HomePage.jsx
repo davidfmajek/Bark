@@ -57,7 +57,6 @@ export function HomePage() {
     establishmentCount: 0
   });
 
-  /** Top-spot card keys whose `<img>` failed after we resolved a Storage URL (show gradient instead). */
   const [topSpotImageFailedIds, setTopSpotImageFailedIds] = useState(() => new Set());
 
   useEffect(() => {
@@ -69,66 +68,68 @@ export function HomePage() {
           .select('*, users(display_name)')
           .order('helpful_count', { ascending: false })
       ]);
-	
+
+      if (!mounted) return;
+
       const activeEsts = estRes.data ?? [];
       const allReviews = revRes.data ?? [];
 
-      if (mounted) {
-        const totalRating = allReviews.reduce((acc, curr) => acc + curr.rating, 0);
-        const average = allReviews.length ? (totalRating / allReviews.length).toFixed(1) : 0;
-        
-        setStats({
-          reviewCount: allReviews.length,
-          avgRating: average,
-          establishmentCount: activeEsts.length
-        });
+      const totalRating = allReviews.reduce((acc, curr) => acc + curr.rating, 0);
+      const average = allReviews.length ? (totalRating / allReviews.length).toFixed(1) : 0;
 
-        const formattedSpots = activeEsts.map(est => {
-          const estReviews = allReviews.filter(r => r.establishment_id === est.establishment_id);
-          const avg = estReviews.length 
-            ? estReviews.reduce((acc, cur) => acc + cur.rating, 0) / estReviews.length 
-            : 0;
+      setStats({
+        reviewCount: allReviews.length,
+        avgRating: average,
+        establishmentCount: activeEsts.length
+      });
 
-          return {
-            id: est.establishment_id,
-            name: est.name,
-            meta: `${est.building_name || 'Campus'} \u00b7 ${est.category || 'Dining'}`,
-            rating: avg,
-            badge: avg >= 4.5 ? 'TOP RATED' : (avg >= 4.0 ? 'POPULAR' : null),
-            accent: 'from-[#f5bf3e]/20 to-transparent',
-          };
-        });
+      setEstablishments(activeEsts);
 
-        const top4Base = formattedSpots.sort((a, b) => b.rating - a.rating).slice(0, 4);
-        const top4 = await Promise.all(
-          top4Base.map(async (spot) => {
-            const urls = await fetchEstablishmentGalleryUrls(supabase, { establishment_id: spot.id });
-            return { ...spot, picture: urls[0] ?? null };
-          }),
-        );
-        setTopSpots(top4);
-        setTopSpotImageFailedIds(new Set());
+      const formattedSpots = activeEsts.map(est => {
+        const estReviews = allReviews.filter(r => r.establishment_id === est.establishment_id);
+        const avg = estReviews.length
+          ? estReviews.reduce((acc, cur) => acc + cur.rating, 0) / estReviews.length
+          : 0;
 
-        const pickedReviews = top4.map(spot => {
-          const latestReview = allReviews.find(r => r.establishment_id === spot.id);
-          if (!latestReview) return null;
-          const reviewerName = latestReview.users?.display_name || 'Anonymous Retriever';
+        return {
+          id: est.establishment_id,
+          name: est.name,
+          meta: `${est.building_name || 'Campus'} \u00b7 ${est.category || 'Dining'}`,
+          rating: avg,
+          badge: avg >= 4.5 ? 'TOP RATED' : (avg >= 4.0 ? 'POPULAR' : null),
+          accent: 'from-[#f5bf3e]/20 to-transparent',
+        };
+      });
 
-          return {
-            id: latestReview.review_id || latestReview.id, 
-            reviewId: latestReview.review_id || latestReview.id,
-            establishmentId: spot.id,
-            name: reviewerName,
-            initials: reviewerName.split(/[ _]/).map(n => n[0]).join('').toUpperCase().substring(0, 2),
-            establishmentName: spot.name,
-            rating: latestReview.rating,
-            content: latestReview.body || latestReview.content || 'Great food and atmosphere!',
-          };
-        }).filter(Boolean);
+      const top4Base = formattedSpots.sort((a, b) => b.rating - a.rating).slice(0, 4);
+      const top4 = await Promise.all(
+        top4Base.map(async (spot) => {
+          const urls = await fetchEstablishmentGalleryUrls(supabase, { establishment_id: spot.id });
+          return { ...spot, picture: urls[0] ?? null };
+        }),
+      );
+      if (!mounted) return;
+      setTopSpots(top4);
+      setTopSpotImageFailedIds(new Set());
 
-        setFeaturedReviews(pickedReviews);
-        setEstablishments(activeEsts);
-      }
+      const pickedReviews = top4.map(spot => {
+        const latestReview = allReviews.find(r => r.establishment_id === spot.id);
+        if (!latestReview) return null;
+        const reviewerName = latestReview.users?.display_name || 'Anonymous Retriever';
+
+        return {
+          id: latestReview.review_id || latestReview.id,
+          reviewId: latestReview.review_id || latestReview.id,
+          establishmentId: spot.id,
+          name: reviewerName,
+          initials: reviewerName.split(/[ _]/).map(n => n[0]).join('').toUpperCase().substring(0, 2),
+          establishmentName: spot.name,
+          rating: latestReview.rating,
+          content: latestReview.body || latestReview.content || 'Great food and atmosphere!',
+        };
+      }).filter(Boolean);
+
+      setFeaturedReviews(pickedReviews);
     })();
     return () => { mounted = false; };
   }, []);
@@ -137,8 +138,12 @@ export function HomePage() {
     if (!establishments.length) return;
     let cancelled = false;
     (async () => {
-      const slides = await fetchCarouselSlidesFromStorage(supabase, establishments);
-      if (!cancelled) setCarouselSlides(slides);
+      try {
+        const slides = await fetchCarouselSlidesFromStorage(supabase, establishments);
+        if (!cancelled) setCarouselSlides(slides);
+      } catch {
+        if (!cancelled) setCarouselSlides([]);
+      }
     })();
     return () => { cancelled = true; };
   }, [establishments]);
