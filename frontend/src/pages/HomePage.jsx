@@ -4,8 +4,9 @@ import { useTheme } from '../contexts/ThemeContext';
 import { PictureCarousel } from '../components/PictureCarousel';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
-import { 
-  fetchCarouselSlidesFromStorage
+import {
+  fetchCarouselSlidesFromStorage,
+  fetchEstablishmentGalleryUrls,
 } from '../lib/restaurantImages';
 
 function Stars({ rating, dark }) {
@@ -56,6 +57,9 @@ export function HomePage() {
     establishmentCount: 0
   });
 
+  /** Top-spot card keys whose `<img>` failed after we resolved a Storage URL (show gradient instead). */
+  const [topSpotImageFailedIds, setTopSpotImageFailedIds] = useState(() => new Set());
+
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -85,8 +89,6 @@ export function HomePage() {
             ? estReviews.reduce((acc, cur) => acc + cur.rating, 0) / estReviews.length 
             : 0;
 
-          // Resolve image candidates using your helper
-
           return {
             id: est.establishment_id,
             name: est.name,
@@ -94,12 +96,18 @@ export function HomePage() {
             rating: avg,
             badge: avg >= 4.5 ? 'TOP RATED' : (avg >= 4.0 ? 'POPULAR' : null),
             accent: 'from-[#f5bf3e]/20 to-transparent',
-            picture: `https://igxeykkarewzlcxhwcnu.supabase.co/storage/v1/object/public/Resturant-logos/logos/${est.establishment_id}.png`
           };
         });
 
-        const top4 = formattedSpots.sort((a, b) => b.rating - a.rating).slice(0, 4);
+        const top4Base = formattedSpots.sort((a, b) => b.rating - a.rating).slice(0, 4);
+        const top4 = await Promise.all(
+          top4Base.map(async (spot) => {
+            const urls = await fetchEstablishmentGalleryUrls(supabase, { establishment_id: spot.id });
+            return { ...spot, picture: urls[0] ?? null };
+          }),
+        );
         setTopSpots(top4);
+        setTopSpotImageFailedIds(new Set());
 
         const pickedReviews = top4.map(spot => {
           const latestReview = allReviews.find(r => r.establishment_id === spot.id);
@@ -233,14 +241,13 @@ export function HomePage() {
                 }`}
               >
                 <div className="relative h-32 w-full overflow-hidden bg-gray-100 dark:bg-gray-800">
-                  {r.picture ? (
-                    <img 
-                      src={r.picture} 
-                      alt={r.name} 
+                  {r.picture && !topSpotImageFailedIds.has(r.id) ? (
+                    <img
+                      src={r.picture}
+                      alt={r.name}
                       className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
-                      onError={(e) => { 
-                        e.target.onerror = null; 
-                        e.target.src = 'https://via.placeholder.com/400x300?text=Dining+Spot'; 
+                      onError={() => {
+                        setTopSpotImageFailedIds((prev) => new Set(prev).add(r.id));
                       }}
                     />
                   ) : (
