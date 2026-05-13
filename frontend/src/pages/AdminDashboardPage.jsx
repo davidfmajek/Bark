@@ -88,7 +88,7 @@ export function AdminDashboardPage() {
 
   const loadSummary = useCallback(async () => {
     const [rep, usr, est, rev, flg] = await Promise.all([
-      supabase.from('reports').select('report_id', { count: 'exact', head: true }).eq('status', 'Pending'),
+      supabase.from('reports').select('report_id, status', { count: 'exact', head: true }).eq('status', 'Pending'),
       supabase.from('users').select('user_id', { count: 'exact', head: true }),
       supabase.from('establishments').select('establishment_id', { count: 'exact', head: true }).eq('is_active', true),
       supabase.from('reviews').select('review_id', { count: 'exact', head: true }),
@@ -137,7 +137,7 @@ export function AdminDashboardPage() {
       ...(reviews.data ?? []).map((r) => ({ id: `review-${r.review_id}`, ts: r.created_at, label: `${r.user?.display_name || r.user?.email || 'Anonymous user'} rated ${r.establishment?.name || 'Unknown establishment'} ${r.rating ?? '—'}★` })),
       ...(reports.data ?? []).map((r) => {
         if (r.status === 'Pending') {
-          return { id: `report-${r.report_id}`, ts: r.reported_at, label: `Report submitted: ${r.reason || 'No reason'} (Pending)` };
+          return { id: `report-${r.report_id}`, ts: r.reported_at, label: `Report submitted: ${r.reason || ''} (Pending)` };
         }
         return { id: `report-outcome-${r.report_id}`, ts: r.reported_at, label: `Report #${r.report_id} marked ${r.status}` };
       }),
