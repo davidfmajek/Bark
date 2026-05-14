@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase.js';
-import { Clock, MapPin, ArrowRight, Star, StarHalf, Loader2, FilePenLine } from 'lucide-react';
+import { Clock, MapPin, ArrowRight, Star, StarHalf, Loader2, FilePenLine, ChevronDown } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from "../contexts/AuthContext";
 import { resolveRestaurantCardImageUrl } from '../lib/restaurantImages';
@@ -60,6 +60,13 @@ export function RestaurantsPage() {
   const [restaurants, setRestaurants] = useState([]);
   const [loading, setLoading] = useState(true);
   const [cardImageByEstablishmentId, setCardImageByEstablishmentId] = useState({});
+  const [searchTerm, setSearchTerm] = useState('');
+  const [minRating, setMinRating] = useState(0);
+  const [statusFilter, setStatusFilter] = useState('all'); // 'all', 'open', 'closed'
+  const [sortBy, setSortBy] = useState(''); // 'name' or 'rating'
+  const [isStatusOpen, setIsStatusOpen] = useState(false);
+  const [isRatingOpen, setIsRatingOpen] = useState(false);1
+  const [isSortOpen, setIsSortOpen] = useState(false);
 
 useEffect(() => {
   async function fetchRestaurants() {
@@ -113,16 +120,67 @@ useEffect(() => {
   }
   fetchRestaurants();
 }, []);
+const restaurantsToShow = useMemo(() => {
+  // 1. Start with the base list
+  let result = [...restaurants];
 
-  const restaurantsToShow = useMemo(
-    () =>
-      filterEstablishmentId
-        ? restaurants.filter(
-            (r) => String(r.establishment_id) === String(filterEstablishmentId),
-          )
-        : restaurants,
-    [restaurants, filterEstablishmentId],
-  );
+  // 2. Apply URL filter (your existing logic)
+  if (filterEstablishmentId) {
+    result = result.filter((r) => String(r.establishment_id) === String(filterEstablishmentId));
+  }
+
+  // 3. Filter by Search Name
+  if (searchTerm) {
+    result = result.filter((r) => 
+      r.name?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }
+
+  // 4. Filter by Open/Closed Status
+  if (statusFilter !== 'all') {
+    result = result.filter((r) => {
+      const status = getBusinessStatus(r);
+      return statusFilter === 'open' ? status !== 'Closed' : status === 'Closed';
+    });
+  }
+
+  // 5. Filter by Star Rating
+  if (minRating > 0) {
+    result = result.filter((r) => Number(r.average_rating || 0) >= minRating);
+  }
+
+  // 6. Sort the results
+  // Inside your useMemo for restaurantsToShow, update step #6:
+// Inside your useMemo for restaurantsToShow:
+result.sort((a, b) => {
+  const nameA = a.name?.toLowerCase() || '';
+  const nameB = b.name?.toLowerCase() || '';
+  const rateA = Number(a.average_rating || 0);
+  const rateB = Number(b.average_rating || 0);
+  const reviewsA = Number(a.total_reviews || 0);
+  const reviewsB = Number(b.total_reviews || 0);
+
+  switch (sortBy) {
+    case 'name-asc':
+      return nameA.localeCompare(nameB);
+    case 'name-desc':
+      return nameB.localeCompare(nameA);
+    case 'rating-desc':
+      return rateB - rateA;
+    case 'rating-asc':
+      return rateA - rateB;
+    case 'reviews-desc': // New Case
+      return reviewsB - reviewsA;
+    case 'reviews-asc':  // New Case
+      return reviewsA - reviewsB;
+    default:
+      // If you want A-Z to be the fallback when no sort is selected:
+      return nameA.localeCompare(nameB);
+  }
+});
+
+  return result;
+}, [restaurants, filterEstablishmentId, searchTerm, statusFilter, minRating, sortBy]);
 
   const cardImageResolveKey = useMemo(
     () => restaurantsToShow.map((r) => String(r.establishment_id)).join('|'),
@@ -164,7 +222,146 @@ useEffect(() => {
 
       <main className="container mx-auto px-4 py-8 sm:px-6 sm:py-12">
         <h1 className="mb-6 text-3xl font-black tracking-tight sm:mb-10 sm:text-4xl">UMBC Establishments</h1>
+       <div className="mb-8 flex flex-wrap items-center gap-4">
+  {/* Search Input */}
+  <input
+    type="text"
+    placeholder="Search establishments..."
+    value={searchTerm}
+    onChange={(e) => setSearchTerm(e.target.value)}
+    className={`flex-1 min-w-[240px] px-4 py-2.5 rounded-xl border transition-all focus:ring-2 focus:ring-[#ffbf3e] outline-none ${
+      dark ? 'bg-white/5 border-white/10 text-white' : 'bg-black/5 border-black/10 text-black'
+    }`}
+  />
 
+  {/* Status Filter */}
+  <div 
+    className="relative group"
+    onMouseEnter={() => setIsStatusOpen(true)}
+    onMouseLeave={() => setIsStatusOpen(false)}
+  >
+    <button
+      className={`flex items-center justify-between gap-3 px-5 py-2.5 rounded-xl border transition-all group-hover:ring-2 group-hover:ring-[#ffbf3e] outline-none ${
+        dark ? 'bg-white/5 border-white/10 text-white' : 'bg-black/5 border-black/10 text-black'
+      }`}
+    >
+      {statusFilter === 'all' ? 'All' : statusFilter === 'open' ? 'Open' : 'Closed'}
+      <ChevronDown className={`h-4 w-4 transition-transform duration-300 ${isStatusOpen ? 'rotate-180' : ''}`} />
+    </button>
+
+    {isStatusOpen && (
+      <div className={`absolute top-full left-0 pt-2 w-full min-w-[150px] z-20`}>
+        <div className={`overflow-hidden shadow-xl border animate-in fade-in slide-in-from-top-1 duration-200 ${
+          dark ? 'bg-[#0f1219] border-white/10 rounded-2xl' : 'bg-white border-black/10 rounded-2xl'
+        }`}>
+          {['all', 'open', 'closed'].map((option) => (
+            <button
+              key={option}
+              className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${
+                dark ? 'hover:bg-white/10 text-white' : 'hover:bg-black/5 text-black'
+              }`}
+              onClick={() => setStatusFilter(option)}
+            >
+              {option === 'all' ? 'All' : option === 'open' ? 'Open' : 'Closed'}
+            </button>
+          ))}
+        </div>
+      </div>
+    )}
+  </div>
+
+  {/* Star Filter */}
+  <div 
+    className="relative group"
+    onMouseEnter={() => setIsRatingOpen(true)}
+    onMouseLeave={() => setIsRatingOpen(false)}
+  >
+    <button
+      className={`flex items-center justify-between gap-3 px-5 py-2.5 rounded-xl border transition-all group-hover:ring-2 group-hover:ring-[#ffbf3e] outline-none min-w-[140px] ${
+        dark ? 'bg-white/5 border-white/10 text-white' : 'bg-black/5 border-black/10 text-black'
+      }`}
+    >
+      <span className="font-medium">
+        {minRating === 0 ? 'Any Rating' : `${minRating.toFixed(1)}+ Stars`}
+      </span>
+      <ChevronDown className={`h-4 w-4 transition-transform duration-300 ${isRatingOpen ? 'rotate-180' : ''}`} />
+    </button>
+
+    {isRatingOpen && (
+      <div className="absolute top-full left-0 pt-2 w-full min-w-[160px] z-50">
+        <div className={`overflow-hidden shadow-2xl border backdrop-blur-xl animate-in fade-in slide-in-from-top-1 duration-200 ${
+          dark ? 'bg-[#0f1219]/95 border-white/10 rounded-2xl' : 'bg-white/95 border-black/10 rounded-2xl'
+        }`}>
+          {[0, 4, 3, 2].map((value) => (
+            <button
+              key={value}
+              className={`w-full text-left px-5 py-3 text-sm transition-colors ${
+                minRating === value ? 'text-[#ffbf3e] font-bold' : ''
+              } ${dark ? 'hover:bg-white/10 text-white/90' : 'hover:bg-black/5 text-black/90'}`}
+              onClick={() => setMinRating(value)}
+            >
+              {value === 0 ? 'Any Rating' : `${value}.0+ Stars`}
+            </button>
+          ))}
+        </div>
+      </div>
+    )}
+  </div>
+
+  {/* Sort Filter */}
+<div 
+  className="relative group"
+  onMouseEnter={() => setIsSortOpen(true)}
+  onMouseLeave={() => setIsSortOpen(false)}
+>
+  <button
+    className={`flex items-center justify-between gap-3 px-5 py-2.5 rounded-xl border font-bold transition-all group-hover:ring-2 group-hover:ring-[#ffbf3e] outline-none min-w-[200px] ${
+      dark ? 'bg-[#0f1219] text-[#ffbf3e] border-[#ffbf3e]' : 'bg-black text-white border-black'
+    }`}
+  >
+    <span className="truncate">
+      {!sortBy ? "Sorted by: Name (A-Z)" : `Sorted by: ${
+        sortBy === 'name-asc' ? 'Name (A-Z)' : 
+        sortBy === 'name-desc' ? 'Name (Z-A)' : git status
+        sortBy === 'rating-desc' ? 'Highest Ratings' : 
+        sortBy === 'rating-asc' ? 'Lowest Ratings' :
+        sortBy === 'reviews-desc' ? 'Most Reviews' : 'Least Reviews'
+      }`}
+    </span>
+    <ChevronDown className={`h-4 w-4 transition-transform duration-300 ${isSortOpen ? 'rotate-180' : ''}`} />
+  </button>
+
+  {isSortOpen && (
+    <div className="absolute top-full right-0 pt-2 w-full min-w-[220px] z-50">
+      <div className={`overflow-hidden shadow-2xl border backdrop-blur-xl animate-in fade-in slide-in-from-top-1 duration-200 rounded-2xl ${
+        dark ? 'bg-[#0f1219]/95 border-white/10' : 'bg-white/95 border-black/10'
+      }`}>
+        {[
+          { label: 'Name (A-Z)', value: 'name-asc' },
+          { label: 'Name (Z-A)', value: 'name-desc' },
+          { label: 'Highest Ratings', value: 'rating-desc' },
+          { label: 'Lowest Ratings', value: 'rating-asc' },
+          { label: 'Most Reviewed', value: 'reviews-desc' }, // New Option
+          { label: 'Least Reviewed', value: 'reviews-asc' },  // New Option
+        ].map((option) => (
+          <button
+            key={option.value}
+            className={`w-full text-left px-5 py-3 text-sm transition-colors ${
+              sortBy === option.value ? 'text-[#ffbf3e] font-bold' : ''
+            } ${dark ? 'hover:bg-white/10 text-white' : 'hover:bg-black/5 text-black'}`}
+            onClick={() => {
+              setSortBy(option.value);
+              setIsSortOpen(false); // Closes on selection
+            }}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  )}
+</div>
+</div>
         {loading ? (
           <div className="flex h-64 items-center justify-center">
             <Loader2 className="h-8 w-8 animate-spin text-[#ffbf3e]" />
