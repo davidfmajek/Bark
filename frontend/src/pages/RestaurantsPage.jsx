@@ -322,7 +322,7 @@ result.sort((a, b) => {
     <span className="truncate">
       {!sortBy ? "Sorted by: Name (A-Z)" : `Sorted by: ${
         sortBy === 'name-asc' ? 'Name (A-Z)' : 
-        sortBy === 'name-desc' ? 'Name (Z-A)' : git status
+        sortBy === 'name-desc' ? 'Name (Z-A)' : 
         sortBy === 'rating-desc' ? 'Highest Ratings' : 
         sortBy === 'rating-asc' ? 'Lowest Ratings' :
         sortBy === 'reviews-desc' ? 'Most Reviews' : 'Least Reviews'
