@@ -1,8 +1,8 @@
+import { Gavel, RefreshCw, Trash2, X } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
-import { RefreshCw, Trash2, X } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { LIST_MAX_HEIGHT_CLASS, formatDate, getScrollbarClass, simpleError } from '../utils';
-import { ConfirmModal, statusBadge, Check } from './Common';
+import { Check, ConfirmModal, statusBadge } from './Common';
 
 export function ReportsTab({ dark, verifyPrivileged, onAction }) {
   const [reports, setReports] = useState([]);
@@ -13,6 +13,9 @@ export function ReportsTab({ dark, verifyPrivileged, onAction }) {
   const [error, setError] = useState('');
   const [confirm, setConfirm] = useState(null);
   const filters = ['Pending', 'Reviewed', 'Dismissed', 'Removed'];
+  const [reportModalOpen, setReportModalOpen] = useState(false);
+  const [reviewToReport, setReviewToReport] = useState({});
+  const [reportDetails, setReportDetails] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -73,6 +76,41 @@ export function ReportsTab({ dark, verifyPrivileged, onAction }) {
     load();
   }
 
+  async function banUser(reportId, reportReason) {
+    setActionLoading(reportId + 'ban');
+    setError('');
+    try {
+      await verifyPrivileged('mod');
+      const affectedUser = filtered.find((r) => r.report_id == reportId);
+      if (affectedUser == undefined || affectedUser == null) {
+        console.error("Unable to ban user: could not find affected user");
+        setActionLoading(null);
+        setConfirm(null);
+        setReportModalOpen(false);
+        setReportDetails("");
+        setReviewToReport({});
+        load();
+        return;
+      }
+      const userID = affectedUser?.reviewer?.user_id;
+      const username = affectedUser?.reviewer?.display_name;
+      const rep = await supabase.from('reports').update({ status: "Reviewed", reason: reportReason }).eq('report_id', reportId);
+      if (rep.error) throw rep.error;
+      const ban = await supabase.from('users').update({ is_banned: true }).eq('user_id', userID);
+      if (ban.error) throw ban.error;
+      onAction?.(`Banned user ${username} from report #${reportId}`);
+    
+    } catch (err) {
+      setError(simpleError(err, 'Unable to ban user.'));
+    }
+    setActionLoading(null);
+    setConfirm(null);
+    setReportModalOpen(false);
+    setReportDetails("");
+    setReviewToReport({});
+    load();
+  }
+
   const filtered = reports.filter((r) => {
     const q = search.trim().toLowerCase();
     if (!q) return true;
@@ -81,6 +119,11 @@ export function ReportsTab({ dark, verifyPrivileged, onAction }) {
     return reporter.includes(q) || establishment.includes(q);
   });
 
+  /*
+  useEffect(() => {
+    console.log(JSON.stringify(filtered, null, "\t"));
+  }, [filtered]);
+  */
   const rowBg = dark ? 'bg-[#161b26] border-white/8' : 'bg-white border-black/8';
   const mutedText = dark ? 'text-white/45' : 'text-black/40';
   const scrollbarClass = getScrollbarClass(dark);
@@ -132,9 +175,11 @@ export function ReportsTab({ dark, verifyPrivileged, onAction }) {
                       <span className={`min-w-0 break-words text-xs font-medium [overflow-wrap:anywhere] ${dark ? 'text-[#f5bf3e]/70' : 'text-[#D4A017]'}`}>@ {r.review.establishment.name}</span>
                     )}
                   </div>
-                  <p className={`mt-2 break-words text-sm [overflow-wrap:anywhere] ${dark ? 'text-white/80' : 'text-black/80'}`}>
-                    <span className="font-semibold">Reason:</span> {r.reason}
-                  </p>
+                  {r.reason.length > 0 && (
+                    <p className={`mt-2 break-words text-sm [overflow-wrap:anywhere] ${dark ? 'text-white/80' : 'text-black/80'}`}>
+                      <span className="font-semibold">Reason: </span> {r.reason}
+                    </p>
+                  )}
                   {r.review?.body && (
                     <p className={`mt-1.5 line-clamp-3 break-words rounded-xl p-3 text-sm italic [overflow-wrap:anywhere] ${dark ? 'bg-white/4 text-white/60' : 'bg-black/3 text-black/55'}`}>
                       "{r.review.body}"
@@ -147,28 +192,42 @@ export function ReportsTab({ dark, verifyPrivileged, onAction }) {
                 </div>
 
                 {r.status === 'Pending' && (
-                  <div className="flex flex-shrink-0 items-center gap-2">
-                    <button
-                      disabled={!!actionLoading}
-                      onClick={() => setConfirm({ reportId: r.report_id, reviewId: r.review?.review_id, action: 'dismiss' })}
-                      className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-medium transition-colors ${dark ? 'bg-white/8 text-white/60 hover:bg-white/12' : 'bg-black/5 text-black/60 hover:bg-black/10'}`}
-                    >
-                      <X className="h-3.5 w-3.5" /> Dismiss
-                    </button>
-                    <button
-                      disabled={!!actionLoading}
-                      onClick={() => setConfirm({ reportId: r.report_id, reviewId: r.review?.review_id, action: 'reviewed' })}
-                      className="flex items-center gap-1.5 rounded-xl bg-blue-500/15 px-3 py-1.5 text-xs font-medium text-blue-400 transition-colors hover:bg-blue-500/25"
-                    >
-                      <Check className="h-3.5 w-3.5" /> Mark Reviewed
-                    </button>
-                    <button
-                      disabled={!!actionLoading}
-                      onClick={() => setConfirm({ reportId: r.report_id, reviewId: r.review?.review_id, action: 'remove' })}
-                      className="flex items-center gap-1.5 rounded-xl bg-red-500/15 px-3 py-1.5 text-xs font-medium text-red-400 transition-colors hover:bg-red-500/25"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" /> Remove Review
-                    </button>
+                  <div>
+                    <div className="flex flex-shrink-0 items-center gap-2 py-2">
+                        <button
+                        disabled={!!actionLoading}
+                        onClick={() => setConfirm({ reportId: r.report_id, reviewId: r.review?.review_id, action: 'dismiss' })}
+                        className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-medium transition-colors ${dark ? 'bg-white/8 text-white/60 hover:bg-white/12' : 'bg-black/5 text-black/60 hover:bg-black/10'}`}
+                        >
+                        <X className="h-3.5 w-3.5" /> Dismiss
+                        </button>
+                        <button
+                        disabled={!!actionLoading}
+                        onClick={() => setConfirm({ reportId: r.report_id, reviewId: r.review?.review_id, action: 'reviewed' })}
+                        className="flex items-center gap-1.5 rounded-xl bg-blue-500/15 px-3 py-1.5 text-xs font-medium text-blue-400 transition-colors hover:bg-blue-500/25"
+                        >
+                        <Check className="h-3.5 w-3.5" /> Mark Reviewed
+                        </button>
+                    </div>
+                    <div className="flex flex-shrink-0 items-center gap-2">
+                        <button
+                        disabled={!!actionLoading}
+                        onClick={() => setConfirm({ reportId: r.report_id, reviewId: r.review?.review_id, action: 'remove' })}
+                        className="flex items-center gap-1.5 rounded-xl bg-red-500/15 px-3 py-1.5 text-xs font-medium text-red-400 transition-colors hover:bg-red-500/25"
+                        >
+                        <Trash2 className="h-3.5 w-3.5" /> Remove Review
+                        </button>
+                        <button
+                        disabled={!!actionLoading}
+                        onClick={() => {
+                            setReviewToReport(r);
+                            setReportModalOpen(true);
+                        }}
+                        className="flex items-center gap-1.5 rounded-xl bg-red-500/15 px-3 py-1.5 text-xs font-medium text-red-400 transition-colors hover:bg-red-500/25"
+                        >
+                        <Gavel className="h-3.5 w-3.5" /> Ban User
+                        </button>
+                    </div>
                   </div>
                 )}
                 {(r.status === 'Reviewed' || r.status === 'Dismissed') && (
@@ -207,6 +266,45 @@ export function ReportsTab({ dark, verifyPrivileged, onAction }) {
           }}
           onCancel={() => setConfirm(null)}
         />
+      )}
+      {reportModalOpen == true && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
+          <div className={`w-full max-w-2xl rounded-2xl border p-5 ${dark ? 'border-white/15 bg-[#141925] text-white' : 'border-black/15 bg-white text-black'}`}>
+            <h2 className="text-xl font-black uppercase tracking-wide text-[#f5bf3e] text-center">Ban User</h2>
+            <form>
+              <label>
+                <h2 className="text-xl font-black text-[#f5bf3e] text-center py-3">Provide the reasoning for this user's ban below</h2>
+                <textarea
+                  className="w-full border-2 border-gray-300 p-2 outline-none"
+                  rows="5"
+                  placeholder="Write report here..."
+                  value={reportDetails}
+                  onChange={(e) => setReportDetails(e.target.value)}
+                />
+                
+              </label>
+            </form>
+            <div className="flex justify-end gap-1 py-1">
+              <button
+                type="button"
+                onClick={() => {
+                  banUser(reviewToReport.report_id, reportDetails.trim());
+                  setReportModalOpen(false);
+                }}
+                className="rounded-lg font-bold bg-red-500/15 px-5 py-2 text-red-400 transition-colors hover:bg-red-500/25 transition-transform active:scale-90"
+              >
+                Submit
+              </button>
+              <button
+                type="button"
+                onClick={(e) => setReportModalOpen(false)}
+                className={`rounded-lg font-bold px-5 py-2 transition-transform active:scale-90 transition-colors ${dark ? 'bg-white/8 text-white/60 hover:bg-white/12' : 'bg-black/5 text-black/60 hover:bg-black/10'}`}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
