@@ -38,3 +38,15 @@ export function formatTo12Hour(timeStr) {
   h = h % 12 || 12; // Convert 0 to 12 for midnight
   return `${h}:${minutes} ${ampm}`;
 }
+
+/** Strip markdown headings and collapse AI summary text to plain prose for display. */
+export function formatAiSummary(text) {
+  if (!text) return '';
+  return text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line && !/^#+\s/.test(line))
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}

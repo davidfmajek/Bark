@@ -16,11 +16,12 @@ import {
   ThumbsUp,
   Trash2,
   Pen,
+  Sparkles,
 } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from "../contexts/AuthContext";
 import { fetchEstablishmentGalleryUrls, resolveReviewImageForDisplay } from '../lib/restaurantImages.js';
-import { formatRelativeReviewTime, formatTo12Hour } from '../lib/utils.js';
+import { formatRelativeReviewTime, formatTo12Hour, formatAiSummary } from '../lib/utils.js';
 import { ConfirmModal } from './admin/components/Common';
 
 const MIN_REVIEW_CHARS = 50;
@@ -517,20 +518,25 @@ export function EstablishmentPage() {
       );
 
       if (match) {
-        setEstablishment(match);
+        const { data: summaryData, error: summaryError } = await supabase
+          .from('establishments')
+          .select('ai_summary, summary_review_count, summary_updated_at')
+          .eq('establishment_id', match.establishment_id)
+          .single();
 
-        // --- NEW LOGIC STARTS HERE ---
-        // 3. Fetch the hours for this specific establishment
+        if (summaryError) throw summaryError;
+
+        setEstablishment({ ...match, ...summaryData });
+
         const { data: hoursData, error: hoursError } = await supabase
-          .from('hours') // Replace with 'establishment_hours' if that's your table name
+          .from('hours')
           .select('*')
           .eq('establishment_id', match.establishment_id)
           .order('day_of_week', { ascending: true });
 
         if (hoursError) throw hoursError;
 
-        setHours(hoursData || []); 
-        // --- NEW LOGIC ENDS HERE ---
+        setHours(hoursData || []);
       }
       
     } catch (error) {
@@ -893,6 +899,35 @@ export function EstablishmentPage() {
                 {establishment.description || `Welcome to ${establishment.name}. Experience quality dining located right here at ${establishment.building_name || 'UMBC\' scampus'}.`}
               </p>
             </section>
+
+            {formatAiSummary(establishment.ai_summary) && (
+              <section
+                className={`rounded-2xl border p-5 sm:p-6 ${
+                  dark ? 'border-white/10 bg-gray-900/40' : 'border-black/5 bg-gray-50 shadow-sm'
+                }`}
+              >
+                <h3 className="mb-3 flex items-center gap-3 text-xl font-bold sm:mb-4 sm:text-2xl">
+                  <Sparkles className="h-5 w-5 text-[#ffbf3e] sm:h-6 sm:w-6" aria-hidden />
+                  At a glance
+                </h3>
+                <p
+                  className={`text-base leading-relaxed sm:text-lg ${
+                    dark ? 'text-gray-300' : 'text-gray-700'
+                  }`}
+                >
+                  {formatAiSummary(establishment.ai_summary)}
+                </p>
+                <p className={`mt-3 text-xs sm:text-sm ${dark ? 'text-white/45' : 'text-gray-500'}`}>
+                  <span>Based on all reviews</span>
+                  {establishment.summary_updated_at && (
+                    <>
+                      <span aria-hidden> · </span>
+                      <span>Updated {formatRelativeReviewTime(establishment.summary_updated_at)}</span>
+                    </>
+                  )}
+                </p>
+              </section>
+            )}
 
             {/* Reviews Section */}
             <section className="pt-8 border-t border-white/10 sm:pt-10">
