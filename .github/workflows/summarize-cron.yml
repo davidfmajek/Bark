@@ -1,0 +1,28 @@
+name: Summarize Reviews Cron
+
+on:
+  schedule:
+    # Daily at 11:59 PM Eastern — only spots with new reviews are summarized by the script
+    - cron: "59 23 * * *"
+      timezone: "America/New_York"
+  workflow_dispatch:
+
+jobs:
+  check-and-summarize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Run check and summarize
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          BARK_API_BASE_URL: ${{ secrets.BARK_API_BASE_URL }}
+        run: python backend/scripts/check_and_summarize.py
