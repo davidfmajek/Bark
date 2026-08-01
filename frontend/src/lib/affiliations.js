@@ -8,7 +8,13 @@ export const AFFILIATION_OPTIONS = [
   { value: 'Graduate Student', label: 'Graduate Student' },
   { value: 'Other', label: 'Other' },
 ];
-
+export const TICKET_REASONS = [
+  { value: 'account_issue', label: 'Account Issue' },
+  { value: 'technical_bug', label: 'Technical Bug' },
+  { value: 'feature_suggestion', label: 'Feature Suggestion' },
+  { value: 'outdated_info', label: 'Outdated Restaurant Info' },
+  { value: 'other', label: 'Other' },
+];
 function normalizeAffiliationKey(value) {
   return String(value || '')
     .trim()

@@ -54,6 +54,7 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [banned, setBanned] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession()
@@ -145,6 +146,27 @@ export function AuthProvider({ children }) {
     };
   }, [loading, user]);
 
+
+  useEffect(() => {
+    if (!user) return;
+
+    let cancelled = false;
+    (async () => {
+        const { data: test } = await supabase
+          .from('users')
+          .select('user_id, is_banned')
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        if (cancelled) return;
+        
+        if (test.is_banned) {
+            setBanned(true);
+            await signOut();
+        }
+    })();
+  }, [user]);
+
   const signIn = async (email, password) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
@@ -185,6 +207,7 @@ export function AuthProvider({ children }) {
     signInWithGoogle,
     signOut,
     isAuthenticated: !!user,
+    isBanned: banned,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -17,6 +17,7 @@ import {
   Trash2,
   Pen,
   Sparkles,
+  Flag,
 } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from "../contexts/AuthContext";
@@ -321,6 +322,9 @@ export function EstablishmentPage() {
     () => buildCollagePanels(galleryUrls, galleryOffset),
     [galleryUrls, galleryOffset, reviewPhotosByReviewId],
   );
+  const [reviewToReport, setReviewToReport] = useState(null);
+  const [reportLoading, setReportLoading] = useState(false);
+  
   const handleUpdateReview = async (reviewId) => {
     const review = reviews.find((item) => item.review_id === reviewId);
     if (!review || !canEditReview(review)) {
@@ -550,6 +554,36 @@ export function EstablishmentPage() {
     fetchData();
   }
 }, [slug]);
+
+  async function handleSubmitReport() {
+    if (!user?.id) {
+      return;
+    }
+    if (!establishment?.establishment_id) {
+      return;
+    }
+    
+    setReportLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("reports")
+        .insert({
+          review_id: reviewToReport.review_id,
+          reporter_id: user.id,
+          reason: "",
+          status: "Pending",
+        });
+      if (error) throw error;
+      
+    }
+    catch (e) {
+      console.log("Error submitting report: ", error);
+    }
+    finally {
+      setReportLoading(false);
+      setReviewToReport(null);
+    }
+  };
 
   useEffect(() => {
   async function fetchReviews() {
@@ -1091,6 +1125,18 @@ export function EstablishmentPage() {
                             </button>
                           </div>
                         )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setReviewToReport(review);
+                          }}
+                          title="Report Review"
+                          className={`rounded-lg p-1.5 transition-colors sm:p-2 ${
+                            dark ? 'text-gray-500 hover:bg-white/5 hover:text-red-500' : 'text-gray-400 hover:bg-black/5 hover:text-red-500'
+                          }`}
+                        >
+                          <Flag className="h-4 w-4 sm:h-5 sm:w-5"/>
+                        </button>
                       </div>
                       {editingReviewId === review.review_id ? (
                         <div className="mt-2 space-y-4">
@@ -1518,6 +1564,19 @@ export function EstablishmentPage() {
           onCancel={() => {
             setDeleteReviewId(null);
             setDeleteErrorMessage('');
+          }}
+        />
+      )}
+      {reviewToReport != null && (
+        <ConfirmModal
+          dark={dark}
+          message={`Are you sure you want to report this review?`}
+          confirmLabel="Report Review"
+          confirmColor="red"
+          loading={reportLoading}
+          onConfirm={() => handleSubmitReport()}
+          onCancel={() => {
+            setReviewToReport(null);
           }}
         />
       )}

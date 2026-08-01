@@ -6,7 +6,8 @@ import { supabase } from '../lib/supabase';
 import { ButtonGroup } from './ui/button-group';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
-import { Menu, Search, X } from 'lucide-react';
+import { Menu, Search, X, HelpCircle } from 'lucide-react';
+import {TICKET_REASONS} from '../lib/affiliations.js';
 
 function SunIcon({ className = '' }) {
   return (
@@ -69,7 +70,46 @@ export function Header() {
   const searchMatches = searchTrimmed
     ? establishments.filter((e) => e.name.toLowerCase().includes(searchTrimmed))
     : [];
+  // Inside Header() component:
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [helpStep, setHelpStep] = useState(1); // 1: Select Reason, 2: Description
+  const [helpReason, setHelpReason] = useState('');
+  const [helpText, setHelpText] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const helpReasons = [
+    'Account Issue', 'Reporting a Restaurant', 'Technical Bug', 
+    'Feature Suggestion', 'Outdated Information', 'Other'
+  ];
+  
+
+const handleHelpSubmit = async () => {
+  if (!helpText.trim()) return;
+  setIsSubmitting(true);
+  
+  const { error } = await supabase
+    .from('tickets')
+    .insert([{
+      user_id: user?.id || null, // Allows guest tickets or links to user
+      ticket_reason: helpReason,
+      explanation: helpText,
+    }]);
+
+  if (!error) {
+    alert('Ticket submitted successfully!');
+    resetHelp();
+  } else {
+    alert('Error submitting ticket. Please try again.');
+  }
+  setIsSubmitting(false);
+};
+
+const resetHelp = () => {
+  setHelpOpen(false);
+  setHelpStep(1);
+  setHelpReason('');
+  setHelpText('');
+};
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -400,6 +440,16 @@ export function Header() {
           >
             {isDark ? <SunIcon className="h-5 w-5" /> : <MoonIcon className="h-5 w-5" />}
           </button>
+          {/* ADD THE HELP BUTTON HERE */}
+          <button
+            type="button"
+            onClick={() => setHelpOpen(true)}
+            className={toggleCls}
+            title="Help & Feedback"
+            aria-label="Help and feedback"
+          >
+            <HelpCircle className="h-5 w-5" />
+          </button>
           {isAuthenticated ? (
             <div className="relative" ref={profileRef}>
               <button
@@ -467,6 +517,7 @@ export function Header() {
           )}
         </div>
       </div>
+      
       {mobileMenuOpen && (
         <div id="mobile-nav-panel" className={mobilePanelCls}>
           <div ref={searchRef} className="relative mb-3 min-w-0">
@@ -506,6 +557,113 @@ export function Header() {
           </nav>
         </div>
       )}
+      {/* ... end of the </header> tag logic ... */}
+
+{helpOpen && (
+  <div 
+    className="fixed inset-0 z-[9999] justify-center item-center bg-black/60 backdrop-blur-md p-6 pb-12"    
+    onClick={resetHelp} 
+  >
+    <div 
+      className={`w-full max-w-md rounded-[2.5rem] p-8 shadow-2xl animate-in fade-in slide-in-from-bottom-10 duration-300 ${
+        isDark ? 'bg-[#161b26] text-white border border-white/10' : 'bg-white text-black border border-black/5'
+      }`}
+      onClick={(e) => e.stopPropagation()} 
+    >
+      {/* Header */}
+      <div className="mb-6 flex items-center justify-between px-2">
+        <h2 className="text-xl font-black tracking-tight uppercase italic opacity-90">Support</h2>
+        <button 
+          onClick={resetHelp} 
+          className="rounded-full p-2 transition-all hover:bg-red-500/10 hover:text-red-500"
+        >
+          <X className="h-5 w-5 opacity-40 hover:opacity-100" />
+        </button>
+      </div>
+
+      {helpStep === 1 ? (
+        <div className="space-y-3">
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-40 mb-4 ml-1">Select Reason</p>
+          
+          <div className="flex flex-col gap-2">
+            {TICKET_REASONS.map((option) => (
+              <button
+                key={option.value}
+                onClick={() => setHelpReason(option.value)}
+                className={`w-full rounded-2xl px-6 py-4 text-left text-sm font-bold transition-all border-2 ${
+                  helpReason === option.value 
+                    ? (isDark 
+                        ? 'bg-[#f5bf3e] border-[#f5bf3e] text-[#161b26]' 
+                        : 'bg-[#D4A017] border-[#D4A017] text-white')
+                    : (isDark 
+                        ? 'bg-white/5 border-white/5 hover:border-white/20' 
+                        : 'bg-black/5 border-black/5 hover:border-black/10')
+                }`}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="mt-8 flex justify-end">
+            <Button 
+              disabled={!helpReason} 
+              onClick={() => setHelpStep(2)}
+              className={`w-full py-7 rounded-2xl font-black uppercase tracking-[0.2em] shadow-xl transition-all active:scale-[0.98] ${
+                isDark 
+                  ? 'bg-[#f5bf3e] text-[#161b26] hover:bg-[#ffd15e] disabled:opacity-20' 
+                  : 'bg-[#D4A017] text-white hover:bg-[#c4920f] disabled:opacity-20'
+              }`}
+            >
+              Continue
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-5">
+          <div className="flex items-center justify-between bg-black/5 dark:bg-white/5 p-4 rounded-2xl border border-black/5 dark:border-white/5">
+             <div className="space-y-0.5">
+                <p className="text-[9px] font-black uppercase tracking-widest opacity-40">Reason</p>
+                <p className="text-sm font-bold">
+                  {TICKET_REASONS.find(opt => opt.value === helpReason)?.label}
+                </p>
+             </div>
+             <button 
+              onClick={() => setHelpStep(1)} 
+              className="text-[10px] font-black uppercase tracking-widest opacity-40 hover:opacity-100 underline underline-offset-4 decoration-[#f5bf3e]"
+            >
+              Edit
+            </button>
+          </div>
+          
+          <textarea
+            autoFocus
+            className={`w-full min-h-[160px] rounded-[2rem] border-2 p-6 text-base font-medium focus:ring-0 focus:outline-none transition-all ${
+              isDark 
+                ? 'bg-white/5 border-white/5 focus:border-[#f5bf3e] placeholder:text-white/20' 
+                : 'bg-black/5 border-black/5 focus:border-[#D4A017] placeholder:text-black/20'
+            }`}
+            placeholder="Give us details!"
+            value={helpText}
+            onChange={(e) => setHelpText(e.target.value)}
+          />
+
+          <Button 
+            disabled={!helpText.trim() || isSubmitting} 
+            onClick={handleHelpSubmit}
+            className={`w-full py-7 rounded-2xl font-black uppercase tracking-[0.2em] shadow-xl transition-all ${
+              isDark 
+                ? 'bg-[#f5bf3e] text-[#161b26] hover:bg-[#ffd15e]' 
+                : 'bg-[#D4A017] text-white hover:bg-[#c4920f]'
+            }`}
+          >
+            {isSubmitting ? 'Sending...' : 'Send Message'}
+          </Button>
+        </div>
+      )}
+    </div>
+  </div>
+)}
     </header>
   );
 }

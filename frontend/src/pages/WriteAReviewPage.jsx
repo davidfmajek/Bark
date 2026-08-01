@@ -617,7 +617,7 @@ export function WriteAReviewPage() {
   const [successMessage, setSuccessMessage] = useState('');
   const [recentReviews, setRecentReviews] = useState([]);
   const [reviewsLoading, setReviewsLoading] = useState(false);
-
+  const [showFirstTimeModal, setShowFirstTimeModal] = useState(false);
   const isFinderStep = !establishmentSlug;
 
   const initialRatingFromNav = location.state?.initialRating;
@@ -753,11 +753,18 @@ export function WriteAReviewPage() {
     };
   }, [selectedEstablishment?.establishment_id, isFinderStep]);
 
-  async function handleSubmitReview() {
-    if (!user?.id) {
-      setErrorMessage('Please sign in to submit a review.');
-      return;
-    }
+  async function handleSubmitReview(isAcknowledged=false) {
+  if (!user?.id) {
+    setErrorMessage('Please sign in to submit a review.');
+    return;
+  }
+
+  // Check if they have checked history OR if they just clicked the modal button
+  if (!isAcknowledged) {
+    setShowFirstTimeModal(true);
+    return; 
+  }
+
     if (!selectedEstablishmentId) {
       setErrorMessage('Please select a place first.');
       return;
@@ -928,7 +935,85 @@ export function WriteAReviewPage() {
             formLoading={loading}
           />
         )}
+        
       </main>
+      {/* First-Time User Modal */}
+{showFirstTimeModal && (
+  <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
+    <div className={`w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl shadow-2xl ${dark ? 'bg-[#1a1f2e] border border-white/10 text-white' : 'bg-white text-black'}`}>
+      
+      {/* Header */}
+      <div className="p-6 border-b border-white/10">
+        <h2 className="text-2xl font-bold text-[#ffbf3e]">Welcome to BARK!</h2>
+        <p className="mt-2 font-medium">By UMBC students, for UMBC students.</p>
+      </div>
+
+      {/* Content */}
+      <div className="p-6 space-y-6 text-sm leading-relaxed">
+        <section>
+          <p className="mb-4">In order to maintain the authenticity of this site, please keep this in mind while you are here:</p>
+          <ul className="grid grid-cols-2 gap-2 font-semibold text-[#ffbf3e]">
+            <li>• Be honest</li>
+            <li>• Be respectful</li>
+            <li>• Be specific</li>
+            <li>• Write useful reviews</li>
+          </ul>
+        </section>
+
+        <section className={`p-4 rounded-lg ${dark ? 'bg-red-500/10 border border-red-500/20' : 'bg-red-50'}`}>
+          <h3 className="font-bold text-red-500 mb-2 underline">PROHIBITED CONTENT</h3>
+          <p className="mb-2 text-xs opacity-80">The following will result in review removal or a ban:</p>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1 opacity-90">
+            <span>• Profanity</span>
+            <span>• Hate speech</span>
+            <span>• Harassment</span>
+            <span>• Sexual content</span>
+            <span>• Fake reviews</span>
+            <span>• Spam/Bombing</span>
+            <span>• Defamatory statements</span>
+            <span>• Copied reviews</span>
+          </div>
+        </section>
+
+        <section className={`p-4 rounded-lg ${dark ? 'bg-orange-500/10 border border-orange-500/20' : 'bg-orange-50'}`}>
+          <h3 className="font-bold text-orange-500 mb-2">PRIVACY & PERSONAL INFO</h3>
+          <p className="text-xs mb-2">Sharing personal information of anyone is strictly PROHIBITED and results in an <strong>immediate ban</strong>. This includes:</p>
+          <ul className="space-y-1 opacity-90 italic">
+            <li>• Physical descriptions or names of people</li>
+            <li>• Location info (Dorms, room numbers, class schedules)</li>
+            <li>• Private info (Student IDs, emails, phone numbers)</li>
+          </ul>
+        </section>
+      </div>
+
+        {/* Footer / Action */}
+<div className="p-6 border-t border-white/10 flex flex-col sm:flex-row gap-3">
+  <button
+    type="button"
+    onClick={() => setShowFirstTimeModal(false)}
+    className={`flex-1 py-4 px-6 rounded-xl font-bold transition-colors ${
+      dark 
+        ? 'bg-white/5 hover:bg-white/10 text-white border border-white/10' 
+        : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+    }`}
+  >
+    Cancel
+  </button>
+  
+  <button
+    type="button"
+    onClick={() => {
+      setShowFirstTimeModal(false);
+      handleSubmitReview(true); // This passes the 'isAcknowledged' flag
+    }}
+    className="flex-[2] py-4 px-6 bg-[#ffbf3e] hover:bg-[#ffcf6e] text-[#0f1219] rounded-xl font-bold transition-transform active:scale-[0.98] shadow-lg shadow-[#ffbf3e]/20"
+  >
+    I Agree to the BARK! Guidelines
+  </button>
+</div>
+    </div>
+  </div>
+)}
     </div>
   );
 }
