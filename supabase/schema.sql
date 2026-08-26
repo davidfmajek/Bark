@@ -10,6 +10,14 @@ EXCEPTION
   WHEN duplicate_object THEN NULL;
 END $$;
 
+-- Idempotent repair if an older env is missing enum labels.
+ALTER TYPE affiliation_enum ADD VALUE IF NOT EXISTS 'Student';
+ALTER TYPE affiliation_enum ADD VALUE IF NOT EXISTS 'Professor';
+ALTER TYPE affiliation_enum ADD VALUE IF NOT EXISTS 'Staff';
+ALTER TYPE affiliation_enum ADD VALUE IF NOT EXISTS 'Alumni';
+ALTER TYPE affiliation_enum ADD VALUE IF NOT EXISTS 'Graduate Student';
+ALTER TYPE affiliation_enum ADD VALUE IF NOT EXISTS 'Other';
+
 DO $$ BEGIN
   CREATE TYPE category_enum AS ENUM (
     'Dining_Hall', 'Cafe', 'Restaurant', 'Convenience'

@@ -863,7 +863,7 @@ export function WriteAReviewPage() {
       const sizeRejected = /exceeded the maximum allowed size|maximum allowed size/i.test(raw);
       setErrorMessage(
         sizeRejected
-          ? 'Storage rejected a photo because the review-media bucket limit is too low. In the Supabase dashboard open Storage → review-media → increase the max file size to at least 5 MB (or run supabase/storage_review_media_bucket.sql).'
+          ? 'Storage rejected a photo because the review-media bucket limit is too low. In the Supabase dashboard open Storage → review-media → increase the max file size to at least 5 MB (or run supabase/rls.sql).'
           : raw || 'Review was not saved because photo upload failed. Please try again without photos or check your connection.',
       );
       setSaving(false);

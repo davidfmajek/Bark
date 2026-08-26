@@ -1,5 +1,5 @@
 -- Sync new Supabase Auth users into public.users
--- Run in Supabase Dashboard → SQL Editor (after schema.sql).
+-- Run after schema.sql (Supabase Dashboard → SQL Editor).
 --
 -- Email/password sign-up sends affiliation in metadata on insert → public.users row is created.
 -- Google OAuth defers affiliation until step 2 → trigger skips public.users; the app inserts after step 2.

@@ -31,11 +31,13 @@ Bark/
 │   └── package.json
 ├── supabase/               
 │   ├── schema.sql
-│   ├── auth_sync_trigger.sql
-│   └── *.sql
+│   ├── auth.sql
+│   ├── rls.sql
+│   └── README.md
 └── README.md
 ```
 
+For a fresh Supabase project, run the SQL files in `supabase/` in the order listed in `supabase/README.md`.
 ## Prerequisites
 
 - Node.js 18+

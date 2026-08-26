@@ -262,12 +262,14 @@ export function EstablishmentsTab({ dark, verifyPrivileged, onAction }) {
         .from('establishments')
         .update({ is_active: !currentlyActive })
         .eq('establishment_id', id)
-        .select('establishment_id');
+        .select('establishment_id, is_active');
       if (updateError) throw updateError;
       if (!data || data.length === 0) {
-        throw new Error('No establishment was updated. This is usually caused by missing Supabase RLS update policy for admins on establishments.');
+        throw new Error(
+          'No establishment was updated. Check that public.users.is_admin is true for your account (RLS bark_is_admin), or re-run supabase/rls.sql so role=admin is also accepted.',
+        );
       }
-      onAction?.(`${currentlyActive ? 'Deactivated' : 'Activated'} ${name || id}.`);
+      onAction?.(`${currentlyActive ? 'Hidden' : 'Unhidden'} ${name || id}.`);
     } catch (err) {
       setError(simpleError(err, 'Unable to update establishment status.'));
     }
@@ -411,8 +413,17 @@ export function EstablishmentsTab({ dark, verifyPrivileged, onAction }) {
       };
       if (!payload.name) throw new Error('Name is required.');
 
-      const { error: saveError } = await supabase.from('establishments').update(payload).eq('establishment_id', establishmentId);
+      const { data: saved, error: saveError } = await supabase
+        .from('establishments')
+        .update(payload)
+        .eq('establishment_id', establishmentId)
+        .select('establishment_id');
       if (saveError) throw saveError;
+      if (!saved?.length) {
+        throw new Error(
+          'No establishment was updated. Check that public.users.is_admin is true for your account (RLS bark_is_admin), or re-run supabase/rls.sql so role=admin is also accepted.',
+        );
+      }
 
       try {
         await syncStorageBrandImages(establishmentId, {
@@ -540,8 +551,9 @@ export function EstablishmentsTab({ dark, verifyPrivileged, onAction }) {
                 Edit
               </button>
               <button
+                type="button"
                 disabled={!!actionLoading}
-                onClick={() => setConfirm({ id: e.establishment_id, active: e.is_active, name: e.name })}
+                onClick={() => setConfirm({ id: e.establishment_id, active: !!e.is_active, name: e.name })}
                 className={`flex flex-shrink-0 items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-medium transition-colors ${
                   e.is_active ? 'bg-red-500/15 text-red-400 hover:bg-red-500/25' : 'bg-green-500/15 text-green-400 hover:bg-green-500/25'
                 }`}
@@ -579,6 +591,7 @@ export function EstablishmentsTab({ dark, verifyPrivileged, onAction }) {
           }
           confirmLabel={confirm.active ? 'Hide' : 'Unhide'}
           confirmColor={confirm.active ? 'red' : 'yellow'}
+          loading={actionLoading === confirm.id}
           onConfirm={() => toggleActive(confirm.id, confirm.active, confirm.name)}
           onCancel={() => setConfirm(null)}
         />
